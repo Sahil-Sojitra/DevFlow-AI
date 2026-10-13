@@ -1,0 +1,35 @@
+{
+  "name": "devflow-ai",
+  "version": "0.1.0",
+  "description": "Local-first developer automation tool connecting tickets to Antigravity CLI",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run tests/unit",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "linear:whoami": "node dist/index.js linear:whoami",
+    "linear:issues": "node dist/index.js linear:issues",
+    "linear:issue": "node dist/index.js linear:issue",
+    "plan": "node dist/index.js plan",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "developer-automation",
+    "antigravity",
+    "cli-adapter"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.7"
+  }
+}
