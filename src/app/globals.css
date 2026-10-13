@@ -1,0 +1,199 @@
+:root {
+  --bg-primary: #0a0d14;
+  --bg-secondary: #10141f;
+  --bg-tertiary: #171d2b;
+  --bg-elevated: #1f2738;
+  --bg-hover: #263045;
+  --border-subtle: #232b3d;
+  --border-default: #2f3a52;
+  --border-active: #495a80;
+
+  --text-primary: #f0f4fc;
+  --text-secondary: #9aa8c2;
+  --text-muted: #5e6b82;
+
+  --accent-primary: #6366f1;
+  --accent-primary-hover: #4f46e5;
+  --accent-subtle: rgba(99, 102, 241, 0.12);
+  --accent-glow: rgba(99, 102, 241, 0.25);
+
+  --success: #10b981;
+  --success-subtle: rgba(16, 185, 129, 0.12);
+  --warning: #f59e0b;
+  --warning-subtle: rgba(245, 158, 11, 0.12);
+  --danger: #ef4444;
+  --danger-subtle: rgba(239, 68, 68, 0.12);
+  --info: #06b6d4;
+  --info-subtle: rgba(6, 182, 212, 0.12);
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.6);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+input, select, textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-active);
+}
+
+/* Animations */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+/* Markdown styling inside plan viewer */
+.markdown-body {
+  color: var(--text-primary);
+  line-height: 1.7;
+}
+
+.markdown-body h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 1.5rem 0 0.75rem 0;
+  color: #fff;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 0.5rem;
+}
+
+.markdown-body h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 1.25rem 0 0.5rem 0;
+  color: #e2e8f0;
+}
+
+.markdown-body h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 1rem 0 0.5rem 0;
+  color: #cbd5e1;
+}
+
+.markdown-body p {
+  margin-bottom: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.markdown-body ul, .markdown-body ol {
+  margin: 0.5rem 0 0.75rem 1.5rem;
+  color: var(--text-secondary);
+}
+
+.markdown-body li {
+  margin-bottom: 0.25rem;
+}
+
+.markdown-body code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  color: #a5b4fc;
+}
+
+.markdown-body pre {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  margin: 0.75rem 0;
+  overflow-x: auto;
+}
+
+.markdown-body pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #cbd5e1;
+}
+
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: 1.5rem 0;
+}
+
+.markdown-body blockquote {
+  border-left: 3px solid var(--accent-primary);
+  padding-left: 1rem;
+  margin: 0.75rem 0;
+  color: var(--text-muted);
+}

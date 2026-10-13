@@ -56,7 +56,8 @@ export const AntigravityPromptOptionsSchema = z.object({
     .optional(),
 });
 
-export type AntigravityPromptOptions = z.infer<typeof AntigravityPromptOptionsSchema>;
+export type AntigravityPromptOptions = z.input<typeof AntigravityPromptOptionsSchema>;
+export type AntigravityPromptResolvedOptions = z.output<typeof AntigravityPromptOptionsSchema>;
 
 /**
  * Structured result returned by the Antigravity CLI adapter.

@@ -18,6 +18,8 @@ function createMockChildProcess(): {
   child: ChildProcess;
   stdout: Readable;
   stderr: Readable;
+  sendStdout: (data: string) => void;
+  sendStderr: (data: string) => void;
   emitClose: (code: number, signal?: NodeJS.Signals) => void;
   emitError: (err: Error) => void;
   killMock: ReturnType<typeof vi.fn>;
@@ -69,6 +71,9 @@ describe('AntigravityAdapter', () => {
     allowedWorkingDirs: [allowedDir],
     defaultTimeoutMs: 5000,
     enableIntegrationTest: false,
+    linearApiUrl: 'https://api.linear.app/graphql',
+    enableLinearIntegrationTest: false,
+    plansDir: 'C:\\test-workspace\\data\\plans',
   };
 
   describe('Input Validation & Security', () => {

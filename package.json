@@ -5,7 +5,10 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "dev": "next dev --webpack -H localhost -p 4000",
+    "build": "tsc -p tsconfig.build.json && next build --webpack",
+    "build:cli": "tsc -p tsconfig.build.json",
+    "build:next": "next build --webpack",
     "typecheck": "tsc --noEmit",
     "test": "vitest run tests/unit",
     "test:unit": "vitest run tests/unit",
@@ -14,7 +17,8 @@
     "linear:issues": "node dist/index.js linear:issues",
     "linear:issue": "node dist/index.js linear:issue",
     "plan": "node dist/index.js plan",
-    "start": "node dist/index.js"
+    "start": "next start -H localhost -p 4000",
+    "start:cli": "node dist/index.js"
   },
   "keywords": [
     "developer-automation",
@@ -24,7 +28,13 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "dotenv": "^16.4.7",
+    "lucide-react": "^1.56.0",
+    "next": "^16.4.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "zod": "^3.24.2"
   },
   "devDependencies": {

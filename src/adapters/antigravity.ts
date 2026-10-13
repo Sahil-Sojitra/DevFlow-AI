@@ -45,9 +45,9 @@ const SENSITIVE_KEY_PATTERNS = [
  * are leaked to the child agent process.
  */
 export function sanitizeEnvironment(
-  rawEnv: NodeJS.ProcessEnv = process.env
+  rawEnv: Record<string, string | undefined> = process.env
 ): NodeJS.ProcessEnv {
-  const cleanEnv: NodeJS.ProcessEnv = {};
+  const cleanEnv: Record<string, string | undefined> = {};
 
   for (const [key, value] of Object.entries(rawEnv)) {
     if (value === undefined) continue;
@@ -58,7 +58,7 @@ export function sanitizeEnvironment(
     }
   }
 
-  return cleanEnv;
+  return cleanEnv as NodeJS.ProcessEnv;
 }
 
 /**
