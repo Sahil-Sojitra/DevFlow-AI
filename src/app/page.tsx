@@ -120,6 +120,32 @@ export default function DashboardPage() {
     );
   };
 
+  const handleRegisterRepository = async (repoPath: string): Promise<RepositoryInfo | null> => {
+    const res = await fetch('/api/repositories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: repoPath }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to register repository');
+    }
+    await fetchRepositories();
+    return data.repository as RepositoryInfo;
+  };
+
+  const handleRemoveRepository = async (repoPath: string): Promise<boolean> => {
+    const res = await fetch(`/api/repositories?path=${encodeURIComponent(repoPath)}`, {
+      method: 'DELETE',
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to remove repository');
+    }
+    await fetchRepositories();
+    return true;
+  };
+
   const pendingApprovalsCount = plans.filter((p) => p.reviewStatus === 'pending').length;
 
   return (
@@ -178,11 +204,16 @@ export default function DashboardPage() {
               selectedPlan={targetPlanningPlan}
               onPlanGenerated={handlePlanGenerated}
               onReviewUpdated={handleReviewUpdated}
+              onAddRepository={handleRegisterRepository}
             />
           )}
 
           {currentTab === 'repositories' && (
-            <RepositoriesView repositories={repositories} />
+            <RepositoriesView
+              repositories={repositories}
+              onAddRepository={handleRegisterRepository}
+              onRemoveRepository={handleRemoveRepository}
+            />
           )}
 
           {currentTab === 'settings' && (

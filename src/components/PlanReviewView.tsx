@@ -14,6 +14,7 @@ import {
   X,
   FileText,
   AlertCircle,
+  Plus,
 } from 'lucide-react';
 import type { LinearIssue } from '@/types/linear';
 import type { RepositoryInfo } from '@/services/repo-registry';
@@ -27,6 +28,7 @@ interface PlanReviewViewProps {
   selectedPlan: SavedPlanSummary | null;
   onPlanGenerated: (plan: SavedPlanDetail) => void;
   onReviewUpdated: (issueId: string, status: ReviewStatus, notes?: string) => void;
+  onAddRepository?: (repoPath: string) => Promise<RepositoryInfo | null>;
 }
 
 export function PlanReviewView({
@@ -37,6 +39,7 @@ export function PlanReviewView({
   selectedPlan: initialPlan,
   onPlanGenerated,
   onReviewUpdated,
+  onAddRepository,
 }: PlanReviewViewProps) {
   const [selectedIssueId, setSelectedIssueId] = useState<string>(
     initialTicket?.identifier || initialPlan?.issueIdentifier || (tickets[0]?.identifier ?? '')
@@ -51,6 +54,49 @@ export function PlanReviewView({
   const [confirmOverwrite, setConfirmOverwrite] = useState(false);
   const [reviewNotes, setReviewNotes] = useState('');
   const [reviewSuccessMsg, setReviewSuccessMsg] = useState<string | null>(null);
+
+  // Dynamic Repository addition
+  const [showAddRepo, setShowAddRepo] = useState(false);
+  const [newRepoInput, setNewRepoInput] = useState('');
+  const [addingRepo, setAddingRepo] = useState(false);
+  const [addRepoError, setAddRepoError] = useState<string | null>(null);
+
+  const handleAddRepo = async () => {
+    if (!newRepoInput.trim()) return;
+    setAddingRepo(true);
+    setAddRepoError(null);
+    try {
+      if (onAddRepository) {
+        const added = await onAddRepository(newRepoInput.trim());
+        if (added) {
+          setSelectedRepoPath(added.path);
+          setNewRepoInput('');
+          setShowAddRepo(false);
+        }
+      } else {
+        const res = await fetch('/api/repositories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: newRepoInput.trim() }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setAddRepoError(data.error || 'Failed to add repository.');
+          setAddingRepo(false);
+          return;
+        }
+        if (data.repository) {
+          setSelectedRepoPath(data.repository.path);
+        }
+        setNewRepoInput('');
+        setShowAddRepo(false);
+      }
+    } catch (err: unknown) {
+      setAddRepoError((err as Error).message || 'Failed to add repository.');
+    } finally {
+      setAddingRepo(false);
+    }
+  };
 
   // Sync selected issue if props change
   useEffect(() => {
@@ -236,9 +282,83 @@ export function PlanReviewView({
 
         {/* Repository Picker */}
         <div>
-          <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.45rem' }}>
-            Target Repository (Whitelisted)
-          </label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem' }}>
+            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              Target Repository (Whitelisted)
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                setShowAddRepo(!showAddRepo);
+                setAddRepoError(null);
+              }}
+              style={{
+                fontSize: '0.75rem',
+                color: 'var(--accent-primary)',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+                cursor: 'pointer',
+              }}
+            >
+              <Plus size={13} />
+              <span>{showAddRepo ? 'Cancel' : '+ Add Local Repo'}</span>
+            </button>
+          </div>
+
+          {showAddRepo && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                <input
+                  type="text"
+                  placeholder="Paste local path (e.g. d:\D drive\Sobha\RFI\fe-rfi-classification)"
+                  value={newRepoInput}
+                  onChange={(e) => setNewRepoInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddRepo();
+                    }
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: '0.45rem 0.65rem',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-default)',
+                    backgroundColor: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.82rem',
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddRepo}
+                  disabled={addingRepo || !newRepoInput.trim()}
+                  style={{
+                    padding: '0.45rem 0.85rem',
+                    borderRadius: 'var(--radius-sm)',
+                    backgroundColor: 'var(--accent-primary)',
+                    color: '#fff',
+                    fontSize: '0.8rem',
+                    fontWeight: 600,
+                    opacity: addingRepo || !newRepoInput.trim() ? 0.6 : 1,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {addingRepo ? 'Validating...' : 'Add & Select'}
+                </button>
+              </div>
+              {addRepoError && (
+                <div style={{ fontSize: '0.75rem', color: 'var(--danger)' }}>
+                  {addRepoError}
+                </div>
+              )}
+            </div>
+          )}
+
           <select
             value={selectedRepoPath}
             onChange={(e) => setSelectedRepoPath(e.target.value)}

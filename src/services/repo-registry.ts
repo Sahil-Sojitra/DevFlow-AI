@@ -11,10 +11,75 @@ export interface RepositoryInfo {
   branch: string;
   hasUncommittedChanges: boolean;
   uncommittedCount: number;
+  isCustomRegistered?: boolean;
   packageDetails?: {
     name?: string;
     version?: string;
   };
+}
+
+/**
+ * Storage file for repositories added dynamically through the dashboard.
+ */
+const REGISTRY_FILE = path.resolve('data', 'repositories.json');
+
+export function getCustomRepositories(): string[] {
+  if (!fs.existsSync(REGISTRY_FILE)) return [];
+  try {
+    const raw = fs.readFileSync(REGISTRY_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomRepository(repoPath: string): string {
+  const trimmed = repoPath.trim();
+  if (!trimmed) {
+    throw new Error('Repository path cannot be empty.');
+  }
+
+  const resolved = path.resolve(trimmed);
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`Directory "${resolved}" does not exist on disk.`);
+  }
+
+  const stats = fs.statSync(resolved);
+  if (!stats.isDirectory()) {
+    throw new Error(`Path "${resolved}" is not a directory.`);
+  }
+
+  const current = getCustomRepositories();
+  const exists = current.some((p) => path.resolve(p).toLowerCase() === resolved.toLowerCase());
+
+  if (!exists) {
+    current.push(resolved);
+    const dataDir = path.dirname(REGISTRY_FILE);
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    fs.writeFileSync(REGISTRY_FILE, JSON.stringify(current, null, 2), 'utf8');
+  }
+
+  return resolved;
+}
+
+export function removeCustomRepository(repoPathOrId: string): boolean {
+  const current = getCustomRepositories();
+  const target = repoPathOrId.trim();
+
+  const filtered = current.filter((p) => {
+    const id = generateRepoId(p);
+    return id !== target && path.resolve(p).toLowerCase() !== path.resolve(target).toLowerCase();
+  });
+
+  if (filtered.length !== current.length) {
+    fs.writeFileSync(REGISTRY_FILE, JSON.stringify(filtered, null, 2), 'utf8');
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -42,13 +107,25 @@ export class RepositoryRegistry {
   }
 
   /**
+   * Returns all allowed directories (configured in .env + added dynamically via UI).
+   */
+  public getAllAllowedDirs(): string[] {
+    const fromConfig = this.config.allowedWorkingDirs.map((p) => path.resolve(p));
+    const custom = getCustomRepositories().map((p) => path.resolve(p));
+    const combined = new Set([...fromConfig, ...custom]);
+    return Array.from(combined);
+  }
+
+  /**
    * Returns list of explicitly configured and verified repositories.
    */
   public getRepositories(): RepositoryInfo[] {
-    return this.config.allowedWorkingDirs.map((allowedPath) => {
-      const resolvedPath = path.resolve(allowedPath);
+    const customSet = new Set(getCustomRepositories().map((p) => path.resolve(p).toLowerCase()));
+
+    return this.getAllAllowedDirs().map((resolvedPath) => {
       const exists = fs.existsSync(resolvedPath);
       const id = generateRepoId(resolvedPath);
+      const isCustomRegistered = customSet.has(resolvedPath.toLowerCase());
 
       let repoName = path.basename(resolvedPath);
       let packageDetails: RepositoryInfo['packageDetails'];
@@ -112,6 +189,7 @@ export class RepositoryRegistry {
         branch,
         hasUncommittedChanges,
         uncommittedCount,
+        isCustomRegistered,
         packageDetails,
       };
     });
@@ -141,7 +219,7 @@ export class RepositoryRegistry {
 
     if (!matchedByPath) {
       throw new Error(
-        `Repository "${resolvedInput}" is not in the configured allowed repositories list.`
+        `Repository "${resolvedInput}" is not in the configured allowed repositories list. Add it in the dashboard or DEVFLOW_ALLOWED_WORKING_DIRS.`
       );
     }
 

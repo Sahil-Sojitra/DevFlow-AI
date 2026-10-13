@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import { getAppConfig, type AppConfig } from '../config/env.js';
+import { getCustomRepositories } from '../services/repo-registry.js';
 import {
   AntigravityJsonOutputSchema,
   AntigravityPromptOptionsSchema,
@@ -83,7 +84,10 @@ export class AntigravityAdapter {
   public validateWorkingDirectory(workingDir: string): string {
     const resolvedDir = path.resolve(workingDir);
 
-    const isAllowed = this.config.allowedWorkingDirs.some((allowed) => {
+    const customRepos = getCustomRepositories();
+    const allAllowed = [...this.config.allowedWorkingDirs, ...customRepos];
+
+    const isAllowed = allAllowed.some((allowed) => {
       const resolvedAllowed = path.resolve(allowed);
       // Equal to allowed dir or sub-path of allowed dir
       const relative = path.relative(resolvedAllowed, resolvedDir);
@@ -92,7 +96,7 @@ export class AntigravityAdapter {
 
     if (!isAllowed) {
       throw new AntigravitySecurityError(
-        `Working directory "${resolvedDir}" is not permitted. Allowed paths: ${this.config.allowedWorkingDirs.join(', ')}`
+        `Working directory "${resolvedDir}" is not permitted. Allowed paths: ${allAllowed.join(', ')}`
       );
     }
 
