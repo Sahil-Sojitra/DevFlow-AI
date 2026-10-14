@@ -620,6 +620,73 @@ export function ExecutionSessionsView({
                       </div>
                     </div>
 
+                    {/* Live Implementation Activity Card while Running */}
+                    {['running', 'verifying'].includes(sessionDetail.status) && (
+                      <div
+                        style={{
+                          padding: '1rem 1.25rem',
+                          backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                          borderRadius: 'var(--radius-sm)',
+                          border: '1px solid rgba(59, 130, 246, 0.25)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.65rem',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                            <div
+                              style={{
+                                width: '8px',
+                                height: '8px',
+                                borderRadius: '50%',
+                                backgroundColor: 'var(--accent-primary)',
+                                boxShadow: '0 0 8px var(--accent-primary)',
+                              }}
+                            />
+                            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent-primary)' }}>
+                              Antigravity Execution In Progress
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => setActiveTab('logs')}
+                            style={{
+                              fontSize: '0.76rem',
+                              color: 'var(--accent-primary)',
+                              backgroundColor: 'transparent',
+                              border: 'none',
+                              cursor: 'pointer',
+                              fontWeight: 600,
+                              textDecoration: 'underline',
+                            }}
+                          >
+                            View Live Logs ({sessionDetail.logs?.length || 0}) →
+                          </button>
+                        </div>
+                        <div
+                          style={{
+                            padding: '0.6rem 0.85rem',
+                            backgroundColor: 'var(--bg-primary)',
+                            borderRadius: 'var(--radius-sm)',
+                            border: '1px solid var(--border-subtle)',
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: '0.78rem',
+                            color: 'var(--text-secondary)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                          }}
+                        >
+                          <Terminal size={14} color="var(--accent-primary)" />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {sessionDetail.logs && sessionDetail.logs.length > 0
+                              ? sessionDetail.logs[sessionDetail.logs.length - 1].message
+                              : sessionDetail.progressMessage}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Metadata Grid */}
                     <div
                       style={{

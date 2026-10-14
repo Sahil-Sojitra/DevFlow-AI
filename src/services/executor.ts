@@ -284,15 +284,62 @@ ${planContent}
    - Do NOT invent missing backend endpoints or schemas. If an unapproved blocker is found, stop and explain the blocker in your final response.
 `.trim();
 
-      // Invoke Antigravity CLI with accept-edits mode
-      const execResult = await this.antigravity.executePrompt({
-        workingDir: session.workingPath,
-        prompt: implementationPrompt,
-        outputFormat: 'json',
-        mode: 'accept-edits',
-        effort: 'high',
-        timeoutMs: this.config.defaultTimeoutMs,
-      });
+      // Implementation execution has NO time limit (0) so Antigravity can take as much time as needed to complete the plan.
+      const executionTimeoutMs = 0;
+
+      this.executionStorage.appendLog(
+        sessionId,
+        'info',
+        'Starting Antigravity CLI process with approved plan (Uncapped execution — agent runs until completion)...'
+      );
+
+      // Heartbeat timer to provide live UI updates and elapsed time counter while Antigravity runs
+      const startTime = Date.now();
+      const heartbeatInterval = setInterval(() => {
+        const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
+        const currentSession = this.executionStorage.getSession(sessionId);
+        if (!currentSession || currentSession.status !== 'running') {
+          clearInterval(heartbeatInterval);
+          return;
+        }
+
+        const timeoutNote = executionTimeoutMs > 0 ? ` / limit ${Math.round(executionTimeoutMs / 1000)}s` : '';
+        this.executionStorage.updateSession(sessionId, {
+          progressMessage: `Antigravity agent is generating code and scaffolding components... (${elapsedSec}s elapsed${timeoutNote})`,
+        });
+
+        if (elapsedSec > 0 && elapsedSec % 10 === 0) {
+          this.executionStorage.appendLog(
+            sessionId,
+            'info',
+            `Implementation in progress: agent actively reasoning & writing files (${elapsedSec}s elapsed)...`
+          );
+        }
+      }, 3000);
+
+      let execResult;
+      try {
+        // Invoke Antigravity CLI with accept-edits mode
+        execResult = await this.antigravity.executePrompt({
+          workingDir: session.workingPath,
+          prompt: implementationPrompt,
+          outputFormat: 'json',
+          mode: 'accept-edits',
+          effort: 'medium',
+          timeoutMs: executionTimeoutMs,
+          dangerouslySkipPermissions: true,
+          onProgress: (chunk, stream) => {
+            if (stream === 'stderr') {
+              const trimmed = chunk.trim();
+              if (trimmed.length > 0) {
+                this.executionStorage.appendLog(sessionId, 'info', `[agy stderr] ${trimmed.slice(0, 300)}`);
+              }
+            }
+          },
+        });
+      } finally {
+        clearInterval(heartbeatInterval);
+      }
 
       this.executionStorage.unregisterActiveProcess(sessionId);
 

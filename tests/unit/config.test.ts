@@ -5,7 +5,7 @@ import { loadConfig } from '../../src/config/env.js';
 describe('Configuration Loader', () => {
   it('loads default configuration when no environment variables are set', () => {
     const config = loadConfig({}, 'C:\\dummy\\workspace');
-    expect(config.defaultTimeoutMs).toBe(60000);
+    expect(config.defaultTimeoutMs).toBe(300000);
     expect(config.enableIntegrationTest).toBe(false);
     expect(config.allowedWorkingDirs).toEqual([path.resolve('C:\\dummy\\workspace')]);
     expect(config.antigravityBinPath).toBeDefined();

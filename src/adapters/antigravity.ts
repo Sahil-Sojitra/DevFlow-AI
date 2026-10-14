@@ -148,6 +148,10 @@ export class AntigravityAdapter {
       args.push('--model', options.model);
     }
 
+    if (options.dangerouslySkipPermissions) {
+      args.push('--dangerously-skip-permissions');
+    }
+
     const cleanEnv = sanitizeEnvironment();
 
     try {
@@ -159,6 +163,7 @@ export class AntigravityAdapter {
         timeoutMs,
         outputFormat: options.outputFormat,
         startTime,
+        onProgress: options.onProgress,
       });
     } finally {
       this.activeDirectories.delete(resolvedWorkingDir);
@@ -176,6 +181,7 @@ export class AntigravityAdapter {
     timeoutMs: number;
     outputFormat: 'json' | 'text';
     startTime: number;
+    onProgress?: (chunk: string, stream: 'stdout' | 'stderr') => void;
   }): Promise<AntigravityExecutionResult> {
     return new Promise((resolve) => {
       let stdoutData = '';
@@ -225,13 +231,21 @@ export class AntigravityAdapter {
 
       if (child.stdout) {
         child.stdout.on('data', (chunk) => {
-          stdoutData += chunk.toString();
+          const str = chunk.toString();
+          stdoutData += str;
+          if (params.onProgress) {
+            params.onProgress(str, 'stdout');
+          }
         });
       }
 
       if (child.stderr) {
         child.stderr.on('data', (chunk) => {
-          stderrData += chunk.toString();
+          const str = chunk.toString();
+          stderrData += str;
+          if (params.onProgress) {
+            params.onProgress(str, 'stderr');
+          }
         });
       }
 

@@ -213,6 +213,25 @@ export class ExecutionStorageService {
   }
 
   /**
+   * Updates fields of a session without modifying its state machine status.
+   */
+  public updateSession(
+    sessionId: string,
+    updates: Partial<ExecutionSessionRecord>
+  ): ExecutionSessionRecord | null {
+    const session = this.getSession(sessionId);
+    if (!session) return null;
+
+    const updatedSession: ExecutionSessionRecord = {
+      ...session,
+      ...updates,
+    };
+
+    this.saveSession(updatedSession);
+    return updatedSession;
+  }
+
+  /**
    * Appends a log entry to a session.
    */
   public appendLog(

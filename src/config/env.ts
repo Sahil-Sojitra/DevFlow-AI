@@ -95,7 +95,7 @@ export function loadConfig(
 
   const defaultTimeoutMs = parsed.DEVFLOW_TIMEOUT_MS
     ? parseInt(parsed.DEVFLOW_TIMEOUT_MS, 10)
-    : 60000;
+    : 300000;
 
   const enableIntegrationTest =
     parsed.DEVFLOW_INTEGRATION_TEST === 'true' || parsed.DEVFLOW_INTEGRATION_TEST === '1';

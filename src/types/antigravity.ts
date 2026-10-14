@@ -50,8 +50,7 @@ export const AntigravityPromptOptionsSchema = z.object({
   timeoutMs: z
     .number()
     .int('Timeout must be an integer')
-    .positive('Timeout must be positive')
-    .max(600000, 'Timeout must not exceed 10 minutes')
+    .min(0, 'Timeout must be non-negative (0 disables timeout)')
     .optional(),
   outputFormat: z
     .enum(['json', 'text'])
@@ -64,6 +63,15 @@ export const AntigravityPromptOptionsSchema = z.object({
     .optional(),
   model: z
     .string()
+    .optional(),
+  onProgress: z
+    .custom<((chunk: string, stream: 'stdout' | 'stderr') => void)>(
+      (val) => typeof val === 'function' || val === undefined,
+      'onProgress must be a function'
+    )
+    .optional(),
+  dangerouslySkipPermissions: z
+    .boolean()
     .optional(),
 });
 
