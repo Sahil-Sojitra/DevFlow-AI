@@ -298,11 +298,12 @@ Exact verification commands, automated unit test scenarios, and manual acceptanc
 Explicitly list any uncertainties, missing documentation, or dependencies needing clarification.
 `.trim();
 
-    // 5. Invoke Antigravity CLI in non-interactive print mode
+    // 5. Invoke Antigravity CLI in non-interactive print mode with planning mode
     const executionResult = await this.antigravityAdapter.executePrompt({
       workingDir: targetRepo,
       prompt: planningPrompt,
       outputFormat: 'json',
+      mode: 'plan',
       effort: options.effort ?? 'medium',
       model: options.model,
       timeoutMs: options.timeoutMs,
@@ -315,6 +316,11 @@ Explicitly list any uncertainties, missing documentation, or dependencies needin
     }
 
     const generatedBody = executionResult.parsedOutput?.response?.trim() || executionResult.stdout.trim();
+    if (!generatedBody || generatedBody.startsWith('{"conversation_id":') && !executionResult.parsedOutput?.response) {
+      throw new Error(
+        `Antigravity CLI did not produce an implementation plan: ${executionResult.error || 'Empty response received from CLI agent.'}`
+      );
+    }
     const generatedAt = new Date().toISOString();
 
     // 6. Format final plan document with metadata header

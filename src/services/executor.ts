@@ -275,11 +275,12 @@ ${planContent}
 6. Verify your changes before completing.
 `.trim();
 
-      // Invoke Antigravity CLI
+      // Invoke Antigravity CLI with accept-edits mode
       const execResult = await this.antigravity.executePrompt({
         workingDir: session.workingPath,
         prompt: implementationPrompt,
         outputFormat: 'json',
+        mode: 'accept-edits',
         effort: 'high',
         timeoutMs: this.config.defaultTimeoutMs,
       });
@@ -313,15 +314,22 @@ ${planContent}
         return;
       }
 
-      this.executionStorage.appendLog(
-        sessionId,
-        'info',
-        `Agent implementation completed in ${Math.round(execResult.durationMs / 1000)}s.`
-      );
+      // Check changed files relative to baseline
+      let detectedChanges = detectChangedFiles(session.workingPath, session.baselineFiles);
+      if (detectedChanges.length === 0) {
+        this.executionStorage.appendLog(sessionId, 'warn', 'Agent completed run, but 0 files were modified or created on disk.');
+      } else {
+        this.executionStorage.appendLog(
+          sessionId,
+          'info',
+          `Agent implementation completed in ${Math.round(execResult.durationMs / 1000)}s with ${detectedChanges.length} file(s) changed.`
+        );
+      }
 
       // Transition to 'verifying'
       session = this.executionStorage.transitionSession(sessionId, 'verifying', {
         implementationCompleted: true,
+        changedFiles: detectedChanges,
         progressMessage: 'Running configured verification pipeline (tests, typecheck, lint, build)...',
       });
 
@@ -350,21 +358,38 @@ ${planContent}
         }
       }
 
-      if (allPassed) {
+      // Re-detect changes after verification in case verification created/modified files
+      detectedChanges = detectChangedFiles(session.workingPath, session.baselineFiles);
+
+      if (detectedChanges.length === 0) {
+        this.finishSession(sessionId, 'failed', {
+          implementationCompleted: false,
+          verificationPassed: false,
+          verificationResults,
+          changedFiles: [],
+          progressMessage: 'No file changes produced by agent.',
+          summary: 'Agent process completed, but 0 files were created or modified on disk. Verify that the approved plan contains actionable code steps.',
+          error: 'Agent completed without producing any file modifications.',
+        });
+      } else if (allPassed) {
         this.finishSession(sessionId, 'completed', {
           implementationCompleted: true,
           verificationPassed: true,
           verificationResults,
+          changedFiles: detectedChanges,
           progressMessage: 'Implementation and verification completed successfully.',
-          summary: `Implementation finished and ${configuredChecks.length} configured verification checks passed.`,
+          summary: configuredChecks.length > 0
+            ? `Implementation finished (${detectedChanges.length} file(s) modified) and ${configuredChecks.length} configured verification checks passed.`
+            : `Implementation finished (${detectedChanges.length} file(s) modified). Note: 0 verification checks were configured in package.json.`,
         });
       } else {
         this.finishSession(sessionId, 'failed', {
           implementationCompleted: true,
           verificationPassed: false,
           verificationResults,
+          changedFiles: detectedChanges,
           progressMessage: `Verification failed: ${failedChecks.map((c) => c.name).join(', ')} failed.`,
-          summary: `Implementation finished, but ${failedChecks.length} verification check(s) failed (${failedChecks.map((c) => c.name).join(', ')}).`,
+          summary: `Implementation finished (${detectedChanges.length} file(s) modified), but ${failedChecks.length} verification check(s) failed (${failedChecks.map((c) => c.name).join(', ')}).`,
           error: `Verification checks failed: ${failedChecks.map((c) => c.name).join(', ')}.`,
         });
       }

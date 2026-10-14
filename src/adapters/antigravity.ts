@@ -136,6 +136,10 @@ export class AntigravityAdapter {
       '--disable-slash-commands',
     ];
 
+    if (options.mode) {
+      args.push('--mode', options.mode);
+    }
+
     if (options.effort) {
       args.push('--effort', options.effort);
     }
@@ -279,6 +283,13 @@ export class AntigravityAdapter {
             const validated = AntigravityJsonOutputSchema.safeParse(rawJson);
             if (validated.success) {
               parsedOutput = validated.data;
+              if (
+                parsedOutput.denied_actions &&
+                parsedOutput.denied_actions.length > 0 &&
+                (!parsedOutput.response || parsedOutput.response.trim().length === 0)
+              ) {
+                parseError = `Antigravity CLI action was denied in headless mode: ${parsedOutput.denied_actions.map((a) => a.display_name || a.action).join(', ')}`;
+              }
             } else {
               parseError = `Failed to validate Antigravity JSON output: ${validated.error.message}`;
             }

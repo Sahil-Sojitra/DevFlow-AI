@@ -13,6 +13,13 @@ export const AntigravityUsageSchema = z.object({
 
 export type AntigravityUsage = z.infer<typeof AntigravityUsageSchema>;
 
+export const AntigravityDeniedActionSchema = z.object({
+  action: z.string(),
+  display_name: z.string().optional(),
+}).passthrough();
+
+export type AntigravityDeniedAction = z.infer<typeof AntigravityDeniedActionSchema>;
+
 /**
  * Schema for standard JSON output emitted by Antigravity CLI (`agy --print ... --output-format json`).
  */
@@ -23,6 +30,7 @@ export const AntigravityJsonOutputSchema = z.object({
   duration_seconds: z.number().optional(),
   num_turns: z.number().optional(),
   usage: AntigravityUsageSchema.optional(),
+  denied_actions: z.array(AntigravityDeniedActionSchema).optional(),
 }).passthrough();
 
 export type AntigravityJsonOutput = z.infer<typeof AntigravityJsonOutputSchema>;
@@ -48,6 +56,9 @@ export const AntigravityPromptOptionsSchema = z.object({
   outputFormat: z
     .enum(['json', 'text'])
     .default('json'),
+  mode: z
+    .enum(['accept-edits', 'auto', 'plan'])
+    .optional(),
   effort: z
     .enum(['low', 'medium', 'high', 'xhigh', 'max'])
     .optional(),
