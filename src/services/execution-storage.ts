@@ -286,6 +286,8 @@ export class ExecutionStorageService {
             isDone: rec.isDone,
             doneAt: rec.doneAt,
             revisionCount: rec.revisionCount ?? (rec.revisions?.length ?? 0),
+            autoFixAttempts: rec.autoFixAttempts,
+            stuckInHallucination: rec.stuckInHallucination,
           });
         } catch {
           // Ignore corrupt file

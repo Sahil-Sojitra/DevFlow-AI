@@ -595,24 +595,44 @@ export function ExecutionSessionsView({
                       <span style={{ fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: 'var(--accent-primary)' }}>
                         {s.issueIdentifier}
                       </span>
-                      <span
-                        style={{
-                          fontSize: '0.68rem',
-                          fontWeight: 700,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.04em',
-                          padding: '0.12rem 0.45rem',
-                          borderRadius: 'var(--radius-full)',
-                          backgroundColor: getStatusBg(s.status),
-                          color: getStatusColor(s.status),
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.25rem',
-                        }}
-                      >
-                        {isRunning && <span className="animate-pulse" style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: getStatusColor(s.status) }} />}
-                        {s.status}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        {s.stuckInHallucination && (
+                          <span
+                            title="Agent exhausted 3 auto-fix attempts and detected verification hallucination"
+                            style={{
+                              fontSize: '0.62rem',
+                              fontWeight: 700,
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.04em',
+                              padding: '0.12rem 0.4rem',
+                              borderRadius: 'var(--radius-full)',
+                              backgroundColor: 'rgba(239, 68, 68, 0.25)',
+                              color: '#f87171',
+                              border: '1px solid rgba(239, 68, 68, 0.45)',
+                            }}
+                          >
+                            Stuck (3x)
+                          </span>
+                        )}
+                        <span
+                          style={{
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
+                            padding: '0.12rem 0.45rem',
+                            borderRadius: 'var(--radius-full)',
+                            backgroundColor: getStatusBg(s.status),
+                            color: getStatusColor(s.status),
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                          }}
+                        >
+                          {isRunning && <span className="animate-pulse" style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: getStatusColor(s.status) }} />}
+                          {s.status}
+                        </span>
+                      </div>
                     </div>
 
                     <div
@@ -916,6 +936,129 @@ export function ExecutionSessionsView({
                         )}
                       </div>
                     </div>
+
+                    {/* Agent Stuck in Hallucination Warning Banner */}
+                    {sessionDetail.stuckInHallucination && (
+                      <div
+                        style={{
+                          padding: '1.25rem 1.4rem',
+                          backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                          border: '1.5px solid rgba(239, 68, 68, 0.45)',
+                          borderRadius: 'var(--radius-md)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.9rem',
+                          boxShadow: '0 0 20px rgba(239, 68, 68, 0.12)',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.85rem' }}>
+                            <div
+                              style={{
+                                width: '36px',
+                                height: '36px',
+                                borderRadius: '50%',
+                                backgroundColor: 'rgba(239, 68, 68, 0.25)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                                border: '1px solid rgba(239, 68, 68, 0.5)',
+                              }}
+                            >
+                              <AlertTriangle size={20} color="#f87171" />
+                            </div>
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                <span style={{ fontWeight: 800, fontSize: '1rem', color: '#fff' }}>
+                                  Agent Stuck in Hallucination / Autonomous Loop
+                                </span>
+                                <span
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    fontWeight: 700,
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.04em',
+                                    padding: '0.15rem 0.5rem',
+                                    borderRadius: 'var(--radius-full)',
+                                    backgroundColor: 'rgba(239, 68, 68, 0.3)',
+                                    color: '#fca5a5',
+                                    border: '1px solid rgba(239, 68, 68, 0.5)',
+                                  }}
+                                >
+                                  3 / 3 Auto-Fix Attempts Exhausted
+                                </span>
+                              </div>
+                              <p style={{ fontSize: '0.82rem', color: 'rgba(255, 255, 255, 0.8)', marginTop: '0.35rem', lineHeight: 1.5 }}>
+                                The agent repeatedly attempted to implement the task, generate test cases, and pass automated verification. After <strong>3 failed self-healing cycles</strong>, execution was paused to protect your tokens and prevent infinite loops. Developer guidance is now required.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '0.75rem',
+                            paddingTop: '0.75rem',
+                            borderTop: '1px solid rgba(239, 68, 68, 0.2)',
+                          }}
+                        >
+                          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                            Choose an intervention mode below to unblock the agent:
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <button
+                              onClick={() => {
+                                setRevisionMode('direct');
+                                handleOpenRevisionModal();
+                              }}
+                              style={{
+                                padding: '0.45rem 0.85rem',
+                                borderRadius: 'var(--radius-sm)',
+                                border: '1px solid var(--accent-primary)',
+                                backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                                color: 'var(--accent-primary)',
+                                fontSize: '0.78rem',
+                                fontWeight: 700,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <Zap size={13} />
+                              <span>⚡ Fix with Direct Prompt (Tokens Saved)</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setRevisionMode('plan');
+                                handleOpenRevisionModal();
+                              }}
+                              style={{
+                                padding: '0.45rem 0.85rem',
+                                borderRadius: 'var(--radius-sm)',
+                                border: '1px solid var(--border-default)',
+                                backgroundColor: 'var(--bg-secondary)',
+                                color: 'var(--text-primary)',
+                                fontSize: '0.78rem',
+                                fontWeight: 600,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <Sparkles size={13} color="var(--accent-primary)" />
+                              <span>🤖 Fix with AI Plan</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Error Breakdown & Suggested Solutions for Failed Sessions */}
                     {sessionDetail.status === 'failed' && (

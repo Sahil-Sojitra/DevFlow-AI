@@ -270,6 +270,7 @@ CRITICAL RULES:
 2. Do NOT perform any code modifications; only generate the plan.
 3. Do NOT execute any terminal commands, shell commands, or tools. All repository context has been provided above. Formulate and output the entire plan directly as Markdown text in your response.
 4. Base your implementation steps on the actual repository structure and existing patterns observed above.
+5. MANDATORY AUTOMATED TEST CASES: The plan MUST define explicit automated unit/feature tests verifying ticket acceptance criteria in Section 7. These test files must be created or updated to run against the repository's test runner (e.g., vitest, jest, node test runner). Dummy assertions (e.g. exit 0 or console.log) are strictly prohibited.
 
 The plan MUST include the following exact sections:
 # Implementation Plan: [${issue.identifier}] ${issue.title}
@@ -293,7 +294,7 @@ Existing or required endpoints, payload schemas, and contracts. Clearly note if 
 Loading, success, empty, and error states.
 
 ## 7. Testing & Verification Plan
-Exact verification commands, automated unit test scenarios, and manual acceptance steps.
+Detailed automated unit/feature test specifications (test files to create/update, mock setups, assertion criteria) and verification commands.
 
 ## 8. Risks, Assumptions, and Unresolved Questions
 Explicitly list any uncertainties, missing documentation, or dependencies needing clarification.

@@ -15,6 +15,7 @@ import type {
   ExecutionSessionRecord,
   CreateExecutionRequest,
   SessionRevision,
+  VerificationResult,
 } from '../types/execution.js';
 
 export interface ExecutorDependencies {
@@ -283,6 +284,10 @@ ${planContent}
    - Do NOT attempt to run git commands (git commit, git push, git branch, etc.). DevFlow AI strictly manages git operations.
 5. REPORT BLOCKERS:
    - Do NOT invent missing backend endpoints or schemas. If an unapproved blocker is found, stop and explain the blocker in your final response.
+6. MANDATORY AUTOMATED TEST CASES & SELF-VERIFICATION:
+   - For every feature, component, or logic you write, you MUST create or update automated unit/integration test files (e.g. in tests/, __tests__/, or alongside components as *.test.ts/*.test.tsx).
+   - The test cases must thoroughly verify the ticket acceptance criteria and edge cases.
+   - Strictly avoid dummy tests (e.g. process.exit(0), empty test stubs, or trivial true assertions). The tests must import and execute the code you wrote so automated verification can prove implementation correctness.
 `.trim();
 
       // Implementation execution has NO time limit (0) so Antigravity can take as much time as needed to complete the plan.
@@ -390,32 +395,106 @@ ${planContent}
         progressMessage: 'Running configured verification pipeline (tests, typecheck, lint, build)...',
       });
 
-      // Run Verification Checks
-      this.executionStorage.appendLog(sessionId, 'info', 'Discovering and executing project verification checks...');
-      const verificationResults = await this.verificationService.runAllChecks(
-        session.workingPath,
-        60000,
-        (checkName, msg) => {
-          this.executionStorage.appendLog(sessionId, 'info', msg);
+      // Automated Verification & Autonomous Self-Healing Loop (Up to 3 Attempts)
+      const MAX_AUTO_FIX_ATTEMPTS = 3;
+      let autoFixAttempt = 0;
+      let allPassed = false;
+      let verificationResults: VerificationResult[] = [];
+      let configuredChecks: VerificationResult[] = [];
+      let failedChecks: VerificationResult[] = [];
+
+      while (autoFixAttempt <= MAX_AUTO_FIX_ATTEMPTS) {
+        this.executionStorage.appendLog(
+          sessionId,
+          'info',
+          autoFixAttempt === 0
+            ? 'Discovering and executing project verification checks...'
+            : `Re-running verification checks after autonomous self-healing fix pass #${autoFixAttempt}...`
+        );
+
+        verificationResults = await this.verificationService.runAllChecks(
+          session.workingPath,
+          60000,
+          (checkName, msg) => {
+            this.executionStorage.appendLog(sessionId, 'info', msg);
+          }
+        );
+
+        configuredChecks = verificationResults.filter((r) => r.status !== 'not_configured');
+        failedChecks = configuredChecks.filter((r) => r.status === 'failed');
+        allPassed = configuredChecks.length === 0 || failedChecks.length === 0;
+
+        for (const res of verificationResults) {
+          if (res.status === 'passed') {
+            this.executionStorage.appendLog(sessionId, 'info', `✓ [${res.name}] PASSED (${res.durationMs}ms)`);
+          } else if (res.status === 'failed') {
+            this.executionStorage.appendLog(sessionId, 'error', `✗ [${res.name}] FAILED: ${res.error || 'Check failed'}`);
+          } else {
+            this.executionStorage.appendLog(sessionId, 'info', `- [${res.name}] NOT CONFIGURED: ${res.output}`);
+          }
         }
-      );
 
-      // Determine verification outcome
-      const configuredChecks = verificationResults.filter((r) => r.status !== 'not_configured');
-      const failedChecks = configuredChecks.filter((r) => r.status === 'failed');
-      const allPassed = configuredChecks.length === 0 || failedChecks.length === 0;
+        // If all verification checks passed, break out of loop!
+        if (allPassed) {
+          break;
+        }
 
-      for (const res of verificationResults) {
-        if (res.status === 'passed') {
-          this.executionStorage.appendLog(sessionId, 'info', `✓ [${res.name}] PASSED (${res.durationMs}ms)`);
-        } else if (res.status === 'failed') {
-          this.executionStorage.appendLog(sessionId, 'error', `✗ [${res.name}] FAILED: ${res.error || 'Check failed'}`);
-        } else {
-          this.executionStorage.appendLog(sessionId, 'info', `- [${res.name}] NOT CONFIGURED: ${res.output}`);
+        autoFixAttempt++;
+
+        // If attempts remain, dispatch autonomous self-healing prompt to Antigravity
+        if (autoFixAttempt <= MAX_AUTO_FIX_ATTEMPTS) {
+          this.executionStorage.appendLog(
+            sessionId,
+            'warn',
+            `Verification check(s) failed (${failedChecks.map((c) => c.name).join(', ')}). Initiating autonomous self-healing fix pass (${autoFixAttempt} of ${MAX_AUTO_FIX_ATTEMPTS})...`
+          );
+
+          session = this.executionStorage.updateSession(sessionId, {
+            autoFixAttempts: autoFixAttempt,
+            maxAutoFixAttempts: MAX_AUTO_FIX_ATTEMPTS,
+            progressMessage: `Autonomous self-healing in progress (Attempt ${autoFixAttempt} of ${MAX_AUTO_FIX_ATTEMPTS}): Fixing ${failedChecks.map((c) => c.name).join(', ')}...`,
+          })!;
+
+          const failureDetails = failedChecks
+            .map((c) => `### [${c.name.toUpperCase()}] Failure Output:\n${c.output || c.error || 'Check failed with non-zero exit code'}`)
+            .join('\n\n');
+
+          const autoFixPrompt = `
+You are an expert software developer resolving automated verification failures for Linear issue ${session.issueIdentifier} ("${session.issueTitle}").
+This is Autonomous Self-Healing Attempt ${autoFixAttempt} of ${MAX_AUTO_FIX_ATTEMPTS}.
+
+## VERIFICATION CHECK FAILURES & ERROR OUTPUT
+${failureDetails}
+
+## INSTRUCTIONS:
+1. Carefully inspect the failed test, compiler, or lint error logs above.
+2. If unit or integration test assertions failed, check whether the implementation has a bug or if test assertions need updating to accurately reflect requirements, and update the files.
+3. If TypeScript typecheck, ESLint, or build failed, correct all type definitions, missing module imports, and syntax issues.
+4. Directly create or edit code files on disk. (CRITICAL: Do NOT attempt to run terminal or shell commands).
+5. Ensure the repository compiles cleanly and all test cases pass.
+`.trim();
+
+          const fixResult = await this.antigravity.executePrompt({
+            workingDir: session.workingPath,
+            prompt: autoFixPrompt,
+            outputFormat: 'json',
+            mode: 'accept-edits',
+            effort: 'medium',
+            timeoutMs: executionTimeoutMs,
+            dangerouslySkipPermissions: true,
+          });
+
+          if (!fixResult.success) {
+            this.executionStorage.appendLog(
+              sessionId,
+              'error',
+              `Self-healing fix pass #${autoFixAttempt} failed to complete: ${fixResult.error || fixResult.stderr}`
+            );
+          }
         }
       }
 
-      // Re-detect changes after verification in case verification created/modified files
+      // Re-detect changes after all attempts
       detectedChanges = detectChangedFiles(session.workingPath, session.baselineFiles);
 
       if (detectedChanges.length === 0) {
@@ -424,6 +503,8 @@ ${planContent}
           verificationPassed: false,
           verificationResults,
           changedFiles: [],
+          autoFixAttempts: autoFixAttempt,
+          maxAutoFixAttempts: MAX_AUTO_FIX_ATTEMPTS,
           progressMessage: 'No file changes produced by agent.',
           summary: 'Agent process completed, but 0 files were created or modified on disk. Verify that the approved plan contains actionable code steps.',
           error: 'Agent completed without producing any file modifications.',
@@ -434,20 +515,35 @@ ${planContent}
           verificationPassed: true,
           verificationResults,
           changedFiles: detectedChanges,
-          progressMessage: 'Implementation and verification completed successfully.',
+          autoFixAttempts: autoFixAttempt,
+          maxAutoFixAttempts: MAX_AUTO_FIX_ATTEMPTS,
+          stuckInHallucination: false,
+          progressMessage: autoFixAttempt > 0
+            ? `Implementation and verification completed successfully (passed after ${autoFixAttempt} autonomous fix pass(es)).`
+            : 'Implementation and verification completed successfully.',
           summary: configuredChecks.length > 0
-            ? `Implementation finished (${detectedChanges.length} file(s) modified) and ${configuredChecks.length} configured verification checks passed.`
+            ? `Implementation finished (${detectedChanges.length} file(s) modified) and ${configuredChecks.length} configured verification checks passed${autoFixAttempt > 0 ? ` after ${autoFixAttempt} autonomous fix pass(es)` : ''}.`
             : `Implementation finished (${detectedChanges.length} file(s) modified). Note: 0 verification checks were configured in package.json.`,
         });
       } else {
+        // Failed after 3 attempts -> STUCK IN HALLUCINATION / UNABLE TO SOLVE
+        this.executionStorage.appendLog(
+          sessionId,
+          'error',
+          `Autonomous agent is unable to resolve verification errors after ${MAX_AUTO_FIX_ATTEMPTS} attempts. Agent appears stuck in hallucination or conflicting loop. Halting for developer revision & guidance.`
+        );
+
         this.finishSession(sessionId, 'failed', {
           implementationCompleted: true,
           verificationPassed: false,
           verificationResults,
           changedFiles: detectedChanges,
-          progressMessage: `Verification failed: ${failedChecks.map((c) => c.name).join(', ')} failed.`,
-          summary: `Implementation finished (${detectedChanges.length} file(s) modified), but ${failedChecks.length} verification check(s) failed (${failedChecks.map((c) => c.name).join(', ')}).`,
-          error: `Verification checks failed: ${failedChecks.map((c) => c.name).join(', ')}.`,
+          autoFixAttempts: autoFixAttempt,
+          maxAutoFixAttempts: MAX_AUTO_FIX_ATTEMPTS,
+          stuckInHallucination: true,
+          progressMessage: `Agent unable to resolve verification errors after ${MAX_AUTO_FIX_ATTEMPTS} autonomous attempts (Stuck / Hallucination detected). Developer guidance required.`,
+          summary: `The autonomous agent completed ${MAX_AUTO_FIX_ATTEMPTS} consecutive self-healing passes, but verification checks are still failing (${failedChecks.map((c) => c.name).join(', ')}). The agent appears stuck in a conflicting loop or hallucination. Developer guidance is required to break out of the loop.`,
+          error: `Verification checks failed after ${MAX_AUTO_FIX_ATTEMPTS} autonomous fix attempts: ${failedChecks.map((c) => c.name).join(', ')}.`,
         });
       }
     } catch (err: unknown) {

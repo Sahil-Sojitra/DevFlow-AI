@@ -95,6 +95,9 @@ export interface ExecutionSessionRecord {
   revisionCount?: number;
   revisions?: SessionRevision[];
   pendingRevision?: SessionRevision | null;
+  autoFixAttempts?: number;
+  maxAutoFixAttempts?: number;
+  stuckInHallucination?: boolean;
 }
 
 export interface ExecutionSessionSummary {
@@ -115,6 +118,8 @@ export interface ExecutionSessionSummary {
   isDone?: boolean;
   doneAt?: string;
   revisionCount?: number;
+  autoFixAttempts?: number;
+  stuckInHallucination?: boolean;
 }
 
 /**
