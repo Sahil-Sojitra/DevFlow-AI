@@ -15,10 +15,12 @@ import {
   FileText,
   AlertCircle,
   Plus,
+  Play,
 } from 'lucide-react';
 import type { LinearIssue } from '@/types/linear';
 import type { RepositoryInfo } from '@/services/repo-registry';
 import type { SavedPlanSummary, SavedPlanDetail, ReviewStatus } from '@/services/plan-storage';
+import { ExecutionConfirmationModal } from './ExecutionConfirmationModal';
 
 interface PlanReviewViewProps {
   tickets: LinearIssue[];
@@ -29,6 +31,7 @@ interface PlanReviewViewProps {
   onPlanGenerated: (plan: SavedPlanDetail) => void;
   onReviewUpdated: (issueId: string, status: ReviewStatus, notes?: string) => void;
   onAddRepository?: (repoPath: string) => Promise<RepositoryInfo | null>;
+  onExecutionStarted?: (sessionId: string) => void;
 }
 
 export function PlanReviewView({
@@ -40,6 +43,7 @@ export function PlanReviewView({
   onPlanGenerated,
   onReviewUpdated,
   onAddRepository,
+  onExecutionStarted,
 }: PlanReviewViewProps) {
   const [selectedIssueId, setSelectedIssueId] = useState<string>(
     initialTicket?.identifier || initialPlan?.issueIdentifier || (tickets[0]?.identifier ?? '')
@@ -54,6 +58,10 @@ export function PlanReviewView({
   const [confirmOverwrite, setConfirmOverwrite] = useState(false);
   const [reviewNotes, setReviewNotes] = useState('');
   const [reviewSuccessMsg, setReviewSuccessMsg] = useState<string | null>(null);
+
+  // M4 Execution States
+  const [showExecutionModal, setShowExecutionModal] = useState(false);
+  const [startingExecution, setStartingExecution] = useState(false);
 
   // Dynamic Repository addition
   const [showAddRepo, setShowAddRepo] = useState(false);
@@ -219,6 +227,40 @@ export function PlanReviewView({
       setReviewSuccessMsg(data.message);
     } catch (err: unknown) {
       setGenError((err as Error).message || 'Failed to submit review');
+    }
+  };
+
+  const handleAuthorizeExecution = async (useIsolation: boolean) => {
+    if (!planDetail) return;
+    setStartingExecution(true);
+    setGenError(null);
+    try {
+      const res = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          issueIdentifier: planDetail.issueIdentifier,
+          repoPath: selectedRepoPath || planDetail.repository,
+          useIsolation,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setGenError(data.error || 'Failed to start execution session');
+        setShowExecutionModal(false);
+        return;
+      }
+
+      setShowExecutionModal(false);
+      if (onExecutionStarted) {
+        onExecutionStarted(data.session.id);
+      }
+    } catch (err: unknown) {
+      setGenError((err as Error).message || 'Failed to start execution session');
+      setShowExecutionModal(false);
+    } finally {
+      setStartingExecution(false);
     }
   };
 
@@ -593,7 +635,7 @@ export function PlanReviewView({
               </div>
             </div>
 
-            {/* Approval / Rejection Actions */}
+            {/* Approval / Rejection Actions & Implementation Execution */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <button
                 onClick={() => handleReview('rejected')}
@@ -619,7 +661,8 @@ export function PlanReviewView({
                 style={{
                   padding: '0.45rem 1.15rem',
                   borderRadius: 'var(--radius-sm)',
-                  backgroundColor: 'var(--success)',
+                  backgroundColor: planDetail.reviewStatus === 'approved' ? 'rgba(34, 197, 94, 0.2)' : 'var(--success)',
+                  border: planDetail.reviewStatus === 'approved' ? '1px solid var(--success)' : 'none',
                   color: '#fff',
                   fontSize: '0.82rem',
                   fontWeight: 600,
@@ -630,8 +673,32 @@ export function PlanReviewView({
                 }}
               >
                 <Check size={15} />
-                <span>Approve Plan</span>
+                <span>{planDetail.reviewStatus === 'approved' ? 'Approved' : 'Approve Plan'}</span>
               </button>
+
+              {/* M4: Controlled Implementation Trigger - only allowed when plan is approved */}
+              {planDetail.reviewStatus === 'approved' && (
+                <button
+                  onClick={() => setShowExecutionModal(true)}
+                  style={{
+                    padding: '0.45rem 1.25rem',
+                    borderRadius: 'var(--radius-sm)',
+                    backgroundColor: 'var(--accent-primary)',
+                    color: '#fff',
+                    fontSize: '0.82rem',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.45rem',
+                    boxShadow: '0 0 16px var(--accent-glow)',
+                    border: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Play size={14} fill="#fff" />
+                  <span>Start Implementation</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -692,6 +759,17 @@ export function PlanReviewView({
           </p>
         </div>
       )}
+
+      {/* Execution Authorization Modal */}
+      <ExecutionConfirmationModal
+        isOpen={showExecutionModal}
+        ticket={tickets.find((t) => t.identifier === selectedIssueId) || null}
+        plan={planDetail}
+        repository={currentRepo || null}
+        loading={startingExecution}
+        onConfirm={handleAuthorizeExecution}
+        onClose={() => setShowExecutionModal(false)}
+      />
     </div>
   );
 }

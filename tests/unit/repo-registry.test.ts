@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { RepositoryRegistry, generateRepoId } from '../../src/services/repo-registry.js';
+import { RepositoryRegistry, generateRepoId, setRegistryFileForTesting } from '../../src/services/repo-registry.js';
 import type { AppConfig } from '../../src/config/env.js';
 
 describe('RepositoryRegistry', () => {
@@ -20,6 +20,7 @@ describe('RepositoryRegistry', () => {
   };
 
   beforeEach(() => {
+    setRegistryFileForTesting(path.join(testRoot, 'repositories.json'));
     if (fs.existsSync(testRoot)) {
       fs.rmSync(testRoot, { recursive: true, force: true });
     }
@@ -31,6 +32,7 @@ describe('RepositoryRegistry', () => {
   });
 
   afterEach(() => {
+    setRegistryFileForTesting();
     if (fs.existsSync(testRoot)) {
       fs.rmSync(testRoot, { recursive: true, force: true });
     }

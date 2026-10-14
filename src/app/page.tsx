@@ -6,11 +6,13 @@ import { OverviewView } from '@/components/OverviewView';
 import { TicketsView } from '@/components/TicketsView';
 import { TicketDetailModal } from '@/components/TicketDetailModal';
 import { PlanReviewView } from '@/components/PlanReviewView';
+import { ExecutionSessionsView } from '@/components/ExecutionSessionsView';
 import { RepositoriesView } from '@/components/RepositoriesView';
 import { SettingsView } from '@/components/SettingsView';
 import type { LinearIssue } from '@/types/linear';
 import type { RepositoryInfo } from '@/services/repo-registry';
 import type { SavedPlanSummary, SavedPlanDetail, ReviewStatus } from '@/services/plan-storage';
+import type { ExecutionSessionSummary } from '@/types/execution';
 
 export default function DashboardPage() {
   const [currentTab, setCurrentTab] = useState<NavTab>('overview');
@@ -22,11 +24,13 @@ export default function DashboardPage() {
 
   const [repositories, setRepositories] = useState<RepositoryInfo[]>([]);
   const [plans, setPlans] = useState<SavedPlanSummary[]>([]);
+  const [sessions, setSessions] = useState<ExecutionSessionSummary[]>([]);
 
   // Selection states
   const [inspectingTicket, setInspectingTicket] = useState<LinearIssue | null>(null);
   const [targetPlanningTicket, setTargetPlanningTicket] = useState<LinearIssue | null>(null);
   const [targetPlanningPlan, setTargetPlanningPlan] = useState<SavedPlanSummary | null>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
   // Fetch status
   const fetchStatus = useCallback(async () => {
@@ -67,6 +71,19 @@ export default function DashboardPage() {
     }
   }, []);
 
+  // Fetch execution sessions
+  const fetchSessions = useCallback(async () => {
+    try {
+      const res = await fetch('/api/sessions');
+      if (res.ok) {
+        const data = await res.json();
+        setSessions(data.sessions || []);
+      }
+    } catch {
+      // Ignore
+    }
+  }, []);
+
   // Fetch Linear tickets
   const fetchTickets = useCallback(async () => {
     setLoadingTickets(true);
@@ -92,7 +109,8 @@ export default function DashboardPage() {
     fetchRepositories();
     fetchPlans();
     fetchTickets();
-  }, [fetchStatus, fetchRepositories, fetchPlans, fetchTickets]);
+    fetchSessions();
+  }, [fetchStatus, fetchRepositories, fetchPlans, fetchTickets, fetchSessions]);
 
   const handleStartPlanning = (ticket: LinearIssue) => {
     setTargetPlanningTicket(ticket);
@@ -147,6 +165,7 @@ export default function DashboardPage() {
   };
 
   const pendingApprovalsCount = plans.filter((p) => p.reviewStatus === 'pending').length;
+  const activeSessionsCount = sessions.filter((s) => ['queued', 'running', 'verifying'].includes(s.status)).length;
 
   return (
     <div style={{ display: 'flex', width: '100vw', height: '100vh', overflow: 'hidden' }}>
@@ -157,6 +176,7 @@ export default function DashboardPage() {
         ticketCount={tickets.length}
         planCount={plans.length}
         pendingApprovalsCount={pendingApprovalsCount}
+        activeSessionsCount={activeSessionsCount}
         linearConnected={Boolean(statusData?.linear?.configured)}
         antigravityReady={Boolean(statusData?.antigravity?.existsOnDisk)}
       />
@@ -205,6 +225,27 @@ export default function DashboardPage() {
               onPlanGenerated={handlePlanGenerated}
               onReviewUpdated={handleReviewUpdated}
               onAddRepository={handleRegisterRepository}
+              onExecutionStarted={(sessionId) => {
+                setSelectedSessionId(sessionId);
+                fetchSessions();
+                setCurrentTab('sessions');
+              }}
+            />
+          )}
+
+          {currentTab === 'sessions' && (
+            <ExecutionSessionsView
+              initialSessionId={selectedSessionId}
+              onNavigateToPlan={(issueId) => {
+                const plan = plans.find((p) => p.issueIdentifier === issueId);
+                if (plan) {
+                  handleSelectPlan(plan);
+                } else {
+                  const ticket = tickets.find((t) => t.identifier === issueId);
+                  if (ticket) handleStartPlanning(ticket);
+                  else setCurrentTab('plans');
+                }
+              }}
             />
           )}
 

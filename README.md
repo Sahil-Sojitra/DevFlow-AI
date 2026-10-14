@@ -9,6 +9,7 @@ DevFlow AI connects tickets (Linear) to the local Google Antigravity CLI for con
 - **Milestone 1**: Project Foundation & Antigravity CLI Adapter (Complete)
 - **Milestone 2**: Linear Integration & Repository-Aware Ticket Planning (Complete)
 - **Milestone 3**: Local Next.js Developer Dashboard & Plan Review Workflow (Complete)
+- **Milestone 4**: Controlled Implementation & Verification (Complete)
 
 ---
 
@@ -39,8 +40,15 @@ DevFlow AI connects tickets (Linear) to the local Google Antigravity CLI for con
    - Gathers repository context safely: project structure, package scripts, project instructions (`GEMINI.md`, `README.md`), and relevant source files.
    - **Security Exclusions**: Strictly ignores `.env`, private keys (`.pem`, `.key`), credentials, tokens, `node_modules`, and `.git`.
    - **Repository Containment**: Execution is strictly confined to whitelisted paths in `DEVFLOW_ALLOWED_WORKING_DIRS`.
-   - **Factual & Honest Prompting**: The planner explicitly instructs the agent to flag missing backend contracts, endpoints, or requirements under *Risks & Unresolved Questions* rather than hallucinating or inventing answers.
-   - **Plan Storage & Review State**: Saves structured Markdown plans to `data/plans/<ISSUE-ID>.md` with frontmatter metadata. Persists approval and rejection decisions with developer notes in `data/plans/reviews.json`.
+   - **Factual & Honest Prompting**: The planner explicitly instructs the agent to flag missing backend contracts, endpoints, or requirements under *Risks & Unresolved Questions* rather than hallucinating or inventing answers    - **Plan Storage & Review State**: Saves structured Markdown plans to `data/plans/<ISSUE-ID>.md` with frontmatter metadata. Persists approval and rejection decisions with developer notes in `data/plans/reviews.json`.
+
+5. **Controlled Implementation & Verification (Milestone 4 Addition)**:
+   - **Explicit Authorization Only**: Implementation can only begin when the plan has been formally reviewed and `approved`. Approval alone never starts execution; a human must explicitly confirm execution via the dashboard modal or CLI.
+   - **Working Tree Protection & Git Worktree Isolation**: Detects staged, unstaged, and untracked files. If the working tree has uncommitted changes, DevFlow automatically runs the implementation in an isolated Git worktree (`<repo>/.devflow/worktrees/<sessionId>`), guaranteeing the user's main working tree is never overwritten or reset. If isolation fails, execution on a dirty repository is strictly blocked.
+   - **Controlled Antigravity Agent**: Implements the approved plan within strict boundaries. Concurrency guards prevent duplicate runs on the same repository or issue. Environment secrets are strictly scrubbed.
+   - **Automated Verification Pipeline**: Inspects `package.json` for configured scripts (`typecheck`, `test`, `lint`, `build`). Executes configured checks sequentially and records pass/fail status, duration, and output. Unconfigured checks are marked as `not configured`.
+   - **Changed Files & Unified Diff Inspector**: Distinguishes pre-existing changes from changes introduced during the session. Provides full unified syntax-highlighted diffs in the dashboard.
+   - **Zero Automatic Deployments Guarantee**: Never automatically commits, pushes, merges, or deploys. The developer retains full control.
 
 ---
 
@@ -49,7 +57,7 @@ DevFlow AI connects tickets (Linear) to the local Google Antigravity CLI for con
 ```text
 DevFlow/
 ├── src/
-│   ├── index.ts               # CLI entry point (Linear commands, plan generator, ping harness)
+│   ├── index.ts               # CLI entry point (Linear commands, plan generator, implement runner)
 │   ├── app/                   # Next.js App Router (Dashboard & API endpoints)
 │   │   ├── layout.tsx         # Root layout with dark theme & typography
 │   │   ├── page.tsx           # Main developer dashboard page
@@ -58,13 +66,16 @@ DevFlow/
 │   │       ├── status/        # System health & secret-redacted status
 │   │       ├── tickets/       # Assigned Linear tickets & ticket details
 │   │       ├── repositories/  # Configured allowed repository registry
-│   │       └── plans/         # Plan listing, generation, and review approval
+│   │       ├── plans/         # Plan listing, generation, and review approval
+│   │       └── sessions/      # Execution session listing, start, cancel, and diff
 │   ├── components/            # React UI components
-│   │   ├── Sidebar.tsx        # Navigation sidebar with connection badges
+│   │   ├── Sidebar.tsx        # Navigation sidebar with connection badges & active sessions
 │   │   ├── OverviewView.tsx   # Overview metrics, greeting, and recent activity
 │   │   ├── TicketsView.tsx    # Searchable, filterable ticket inbox
 │   │   ├── TicketDetailModal.tsx # Full ticket description & comments modal
-│   │   ├── PlanReviewView.tsx # Plan generation & approve/reject workspace
+│   │   ├── PlanReviewView.tsx # Plan generation, approve/reject & execution trigger
+│   │   ├── ExecutionConfirmationModal.tsx # Pre-flight checklist & isolation confirmation
+│   │   ├── ExecutionSessionsView.tsx # Live monitoring, diffs, logs, & verification cards
 │   │   ├── RepositoriesView.tsx # Allowed repositories & Git status inspector
 │   │   └── SettingsView.tsx   # Security policies & configuration status
 │   ├── adapters/
@@ -73,27 +84,23 @@ DevFlow/
 │   ├── services/
 │   │   ├── planner.ts         # Repository inspection and plan generation service
 │   │   ├── plan-storage.ts    # Safe plan file storage & review decisions service
-│   │   └── repo-registry.ts   # Repository allowlist & Git inspection service
+│   │   ├── repo-registry.ts   # Repository allowlist & Git inspection service
+│   │   ├── git-ops.ts         # Working tree status, worktree isolation, & diff generation
+│   │   ├── verification.ts    # Configured project checks (typecheck, test, lint, build)
+│   │   ├── execution-storage.ts # Session persistence, concurrency locks, & log storage
+│   │   └── executor.ts        # Controlled implementation & verification orchestrator
 │   ├── config/
 │   │   └── env.ts             # Zod-validated environment configuration
 │   └── types/
 │       ├── antigravity.ts     # Antigravity types and schemas
 │       ├── linear.ts          # Linear issue, comment, and user schemas
+│       ├── execution.ts       # Session state transitions, verification, and diff types
 │       └── index.ts           # Types barrel export
 ├── tests/
-│   ├── unit/
-│   │   ├── antigravity.test.ts # Antigravity process adapter unit tests
-│   │   ├── linear.test.ts      # Linear GraphQL unit tests
-│   │   ├── planner.test.ts     # Repository planner & security tests
-│   │   ├── repo-registry.test.ts # Repository allowlist & validation tests
-│   │   ├── plan-storage.test.ts # Plan storage, traversal defense, & review tests
-│   │   ├── dashboard-api.test.ts # API request validation & secret scrubbing tests
-│   │   └── config.test.ts      # Environment configuration tests
-│   └── integration/
-│       ├── antigravity.integration.test.ts # Opt-in live Antigravity CLI test
-│       └── linear.integration.test.ts      # Opt-in live Linear GraphQL test
+│   └── unit/                  # Comprehensive unit test suite (71 tests across 13 suites)
 ├── data/
-│   └── plans/                 # Generated implementation plans & reviews.json
+│   ├── plans/                 # Generated implementation plans & reviews.json
+│   └── sessions/              # Persisted execution sessions (*.json)
 ├── next.config.mjs            # Next.js configuration (Webpack extension alias)
 ├── tsconfig.json              # Full project & Next.js TypeScript configuration
 ├── tsconfig.build.json        # Standalone build configuration for CLI binary

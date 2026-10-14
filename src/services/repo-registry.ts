@@ -21,12 +21,16 @@ export interface RepositoryInfo {
 /**
  * Storage file for repositories added dynamically through the dashboard.
  */
-const REGISTRY_FILE = path.resolve('data', 'repositories.json');
+let registryFilePath = path.resolve('data', 'repositories.json');
+
+export function setRegistryFileForTesting(filePath?: string): void {
+  registryFilePath = filePath ? path.resolve(filePath) : path.resolve('data', 'repositories.json');
+}
 
 export function getCustomRepositories(): string[] {
-  if (!fs.existsSync(REGISTRY_FILE)) return [];
+  if (!fs.existsSync(registryFilePath)) return [];
   try {
-    const raw = fs.readFileSync(REGISTRY_FILE, 'utf8');
+    const raw = fs.readFileSync(registryFilePath, 'utf8');
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -55,11 +59,11 @@ export function saveCustomRepository(repoPath: string): string {
 
   if (!exists) {
     current.push(resolved);
-    const dataDir = path.dirname(REGISTRY_FILE);
+    const dataDir = path.dirname(registryFilePath);
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
-    fs.writeFileSync(REGISTRY_FILE, JSON.stringify(current, null, 2), 'utf8');
+    fs.writeFileSync(registryFilePath, JSON.stringify(current, null, 2), 'utf8');
   }
 
   return resolved;
@@ -75,7 +79,7 @@ export function removeCustomRepository(repoPathOrId: string): boolean {
   });
 
   if (filtered.length !== current.length) {
-    fs.writeFileSync(REGISTRY_FILE, JSON.stringify(filtered, null, 2), 'utf8');
+    fs.writeFileSync(registryFilePath, JSON.stringify(filtered, null, 2), 'utf8');
     return true;
   }
 

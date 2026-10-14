@@ -17,6 +17,7 @@
     "linear:issues": "node dist/index.js linear:issues",
     "linear:issue": "node dist/index.js linear:issue",
     "plan": "node dist/index.js plan",
+    "implement": "node dist/index.js implement",
     "start": "next start -H localhost -p 4000",
     "start:cli": "node dist/index.js"
   },

@@ -10,9 +10,10 @@ import {
   Sparkles,
   CheckCircle2,
   AlertCircle,
+  PlayCircle,
 } from 'lucide-react';
 
-export type NavTab = 'overview' | 'tickets' | 'plans' | 'repositories' | 'settings';
+export type NavTab = 'overview' | 'tickets' | 'plans' | 'sessions' | 'repositories' | 'settings';
 
 interface SidebarProps {
   currentTab: NavTab;
@@ -20,6 +21,7 @@ interface SidebarProps {
   ticketCount: number;
   planCount: number;
   pendingApprovalsCount: number;
+  activeSessionsCount?: number;
   linearConnected: boolean;
   antigravityReady: boolean;
 }
@@ -30,6 +32,7 @@ export function Sidebar({
   ticketCount,
   planCount,
   pendingApprovalsCount,
+  activeSessionsCount = 0,
   linearConnected,
   antigravityReady,
 }: SidebarProps) {
@@ -50,6 +53,12 @@ export function Sidebar({
       label: 'Plan Review',
       icon: <FileCode2 size={18} />,
       badge: pendingApprovalsCount > 0 ? `${pendingApprovalsCount} pending` : planCount > 0 ? planCount : undefined,
+    },
+    {
+      id: 'sessions',
+      label: 'Work Sessions',
+      icon: <PlayCircle size={18} />,
+      badge: activeSessionsCount > 0 ? `${activeSessionsCount} active` : undefined,
     },
     {
       id: 'repositories',

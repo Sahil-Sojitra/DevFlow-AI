@@ -3,11 +3,16 @@ import { getAppConfig } from './config/env.js';
 import { AntigravityAdapter } from './adapters/antigravity.js';
 import { LinearAdapter } from './adapters/linear.js';
 import { TicketPlanner } from './services/planner.js';
+import { ImplementationExecutor } from './services/executor.js';
 
 export * from './config/env.js';
 export * from './adapters/antigravity.js';
 export * from './adapters/linear.js';
 export * from './services/planner.js';
+export * from './services/git-ops.js';
+export * from './services/verification.js';
+export * from './services/execution-storage.js';
+export * from './services/executor.js';
 export * from './types/index.js';
 
 /**
@@ -40,6 +45,8 @@ function parseCliArgs(args: string[]): {
       }
     } else if (arg === 'plan' || arg === '--plan') {
       command = 'plan';
+    } else if (arg === 'implement' || arg === '--implement' || arg === 'execute') {
+      command = 'implement';
     } else if (arg === '--issue' || arg === '-i') {
       issueId = args[++i];
     } else if (arg === '--repo' || arg === '-r') {
@@ -203,6 +210,37 @@ export async function main(): Promise<void> {
         console.log(`file:///${result.filePath.replace(/\\/g, '/')}`);
       } catch (err: unknown) {
         console.error('\nPlan generation failed:', (err as Error).message);
+        process.exitCode = 1;
+      }
+      break;
+    }
+
+    case 'implement': {
+      if (!cliArgs.issueId) {
+        console.error('Error: --issue <IDENTIFIER> is required for implementation execution (e.g., --issue SAH-6).');
+        process.exitCode = 1;
+        return;
+      }
+
+      console.log(`Validating implementation eligibility for ${cliArgs.issueId}...`);
+      const executor = new ImplementationExecutor({ config, antigravityAdapter: antigravity });
+
+      try {
+        const session = await executor.startExecutionSession({
+          issueIdentifier: cliArgs.issueId,
+          repoPath: cliArgs.repoPath,
+          useIsolation: true,
+        });
+
+        console.log(`\nExecution Session Created: ${session.id}`);
+        console.log(`Status:      ${session.status}`);
+        console.log(`Repository:  ${session.repositoryPath}`);
+        console.log(`Working Dir: ${session.workingPath}`);
+        console.log(`Isolated:    ${session.isIsolated ? 'Yes (Worktree)' : 'No (Direct repo)'}`);
+        console.log(`Message:     ${session.progressMessage}`);
+        console.log('\nTrack live execution progress via the dashboard at http://localhost:4000');
+      } catch (err: unknown) {
+        console.error('\nImplementation execution failed:', (err as Error).message);
         process.exitCode = 1;
       }
       break;
