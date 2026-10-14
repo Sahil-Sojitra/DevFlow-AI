@@ -268,7 +268,8 @@ Generate a comprehensive, structured implementation plan in Markdown.
 CRITICAL RULES:
 1. Do NOT invent missing backend endpoints, API contracts, or schemas. If a requirement or API contract is missing or ambiguous, flag it explicitly under "Risks, Assumptions and Unresolved Questions".
 2. Do NOT perform any code modifications; only generate the plan.
-3. Base your implementation steps on the actual repository structure and existing patterns observed above.
+3. Do NOT execute any terminal commands, shell commands, or tools. All repository context has been provided above. Formulate and output the entire plan directly as Markdown text in your response.
+4. Base your implementation steps on the actual repository structure and existing patterns observed above.
 
 The plan MUST include the following exact sections:
 # Implementation Plan: [${issue.identifier}] ${issue.title}
