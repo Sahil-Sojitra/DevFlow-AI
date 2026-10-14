@@ -17,8 +17,8 @@ export const VALID_STATUS_TRANSITIONS: Record<ExecutionSessionStatus, ExecutionS
   queued: ['running', 'blocked', 'failed', 'cancelled'],
   running: ['verifying', 'failed', 'cancelled'],
   verifying: ['completed', 'failed', 'cancelled'],
-  completed: [],
-  failed: [],
+  completed: ['running'],
+  failed: ['running'],
   cancelled: [],
   blocked: [],
 };
@@ -54,6 +54,15 @@ export interface SessionLogEntry {
   message: string;
 }
 
+export interface SessionRevision {
+  id: string;
+  feedback: string;
+  planContent: string;
+  createdAt: string;
+  approvedAt?: string;
+  appliedAt?: string;
+}
+
 export interface ExecutionSessionRecord {
   id: string;
   issueIdentifier: string;
@@ -80,6 +89,12 @@ export interface ExecutionSessionRecord {
   exitCode?: number | null;
   error?: string;
   summary?: string;
+  isDone?: boolean;
+  doneAt?: string;
+  doneNote?: string;
+  revisionCount?: number;
+  revisions?: SessionRevision[];
+  pendingRevision?: SessionRevision | null;
 }
 
 export interface ExecutionSessionSummary {
@@ -97,6 +112,9 @@ export interface ExecutionSessionSummary {
   changedFilesCount: number;
   verificationPassed: boolean;
   error?: string;
+  isDone?: boolean;
+  doneAt?: string;
+  revisionCount?: number;
 }
 
 /**
@@ -112,3 +130,25 @@ export const CreateExecutionRequestSchema = z.object({
 });
 
 export type CreateExecutionRequest = z.infer<typeof CreateExecutionRequestSchema>;
+
+export const RequestRevisionSchema = z.object({
+  feedback: z
+    .string()
+    .min(3, 'Feedback must be at least 3 characters')
+    .max(5000, 'Feedback cannot exceed 5000 characters'),
+});
+export type RequestRevisionInput = z.infer<typeof RequestRevisionSchema>;
+
+export const ApplyRevisionSchema = z.object({
+  planContent: z
+    .string()
+    .min(5, 'Revision plan content must be at least 5 characters')
+    .max(50000, 'Revision plan content cannot exceed 50000 characters'),
+  feedback: z.string().max(5000).optional(),
+});
+export type ApplyRevisionInput = z.infer<typeof ApplyRevisionSchema>;
+
+export const MarkDoneSchema = z.object({
+  note: z.string().max(1000).optional(),
+});
+export type MarkDoneInput = z.infer<typeof MarkDoneSchema>;

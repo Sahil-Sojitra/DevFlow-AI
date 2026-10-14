@@ -85,7 +85,15 @@ describe('ExecutionStorageService', () => {
     expect(completed.status).toBe('completed');
     expect(completed.endedAt).toBeDefined();
 
-    // completed -> running is INVALID and must throw
+    // completed -> running is valid for revisions
+    const revised = storage.transitionSession('sess_2', 'running');
+    expect(revised.status).toBe('running');
+
+    // running -> cancelled is valid
+    const cancelled = storage.transitionSession('sess_2', 'cancelled');
+    expect(cancelled.status).toBe('cancelled');
+
+    // cancelled -> running is terminal and INVALID and must throw
     expect(() => {
       storage.transitionSession('sess_2', 'running');
     }).toThrow('Invalid session status transition');

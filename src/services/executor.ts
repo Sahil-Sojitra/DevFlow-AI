@@ -14,6 +14,7 @@ import {
 import type {
   ExecutionSessionRecord,
   CreateExecutionRequest,
+  SessionRevision,
 } from '../types/execution.js';
 
 export interface ExecutorDependencies {
@@ -491,5 +492,207 @@ ${planContent}
     } catch {
       // Ignore transition error if already terminal
     }
+  }
+
+  /**
+   * Generates a targeted revision/fix plan based on developer feedback and existing worktree changes.
+   */
+  public async generateRevisionPlan(
+    sessionId: string,
+    feedback: string
+  ): Promise<SessionRevision> {
+    const session = this.executionStorage.getSession(sessionId);
+    if (!session) {
+      throw new Error(`Session "${sessionId}" not found.`);
+    }
+
+    if (!['completed', 'failed'].includes(session.status)) {
+      throw new Error(
+        `Revisions can only be requested on completed or failed sessions. Current status: ${session.status}`
+      );
+    }
+
+    // Retrieve original plan
+    const originalPlan = this.planStorage.getPlan(session.issueIdentifier);
+    const originalContent = originalPlan?.content || 'No original plan content found.';
+
+    // Inspect current changes in workingPath
+    let currentChangesSummary = 'No changes recorded.';
+    try {
+      const changes = detectChangedFiles(session.workingPath, session.baselineFiles);
+      if (changes.length > 0) {
+        currentChangesSummary = changes.map((c) => `- ${c.status}: ${c.path}`).join('\n');
+      }
+    } catch {
+      // Ignore
+    }
+
+    const revisionPrompt = `
+You are an expert software developer creating a targeted REVISION & FIX PLAN for Linear issue ${session.issueIdentifier} ("${session.issueTitle}").
+
+## ORIGINAL IMPLEMENTATION PLAN
+${originalContent}
+
+## CURRENT FILES MODIFIED IN WORKSPACE
+${currentChangesSummary}
+
+## DEVELOPER FEEDBACK & REQUESTED CHANGES
+${feedback}
+
+## INSTRUCTIONS
+1. Analyze the developer's requested changes in the context of what has already been built.
+2. Outline specific, actionable code edits/additions required to address the developer's feedback.
+3. Keep the plan focused directly on the feedback. Do not refactor unrelated working components.
+4. Directly create, modify, or delete files. (Do NOT include terminal/shell execution commands).
+5. Output the revision plan in clear, structured Markdown.
+`.trim();
+
+    this.executionStorage.appendLog(
+      sessionId,
+      'info',
+      `Generating revision fix plan for developer feedback: "${feedback.slice(0, 80)}..."`
+    );
+
+    const execResult = await this.antigravity.executePrompt({
+      workingDir: session.workingPath,
+      prompt: revisionPrompt,
+      outputFormat: 'json',
+      mode: 'plan',
+      effort: 'medium',
+      timeoutMs: 0,
+      dangerouslySkipPermissions: true,
+    });
+
+    if (!execResult.success && !execResult.parsedOutput?.response) {
+      const err = execResult.error || 'Failed to generate revision plan from Antigravity CLI.';
+      this.executionStorage.appendLog(sessionId, 'error', `Revision plan generation failed: ${err}`);
+      throw new Error(err);
+    }
+
+    const planContent =
+      execResult.parsedOutput?.response?.trim() ||
+      execResult.stdout.trim() ||
+      'No plan content generated.';
+
+    const revision: SessionRevision = {
+      id: `rev_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      feedback,
+      planContent,
+      createdAt: new Date().toISOString(),
+    };
+
+    this.executionStorage.updateSession(sessionId, {
+      pendingRevision: revision,
+    });
+
+    this.executionStorage.appendLog(
+      sessionId,
+      'info',
+      `Revision fix plan ready for developer review (ID: ${revision.id}).`
+    );
+
+    return revision;
+  }
+
+  /**
+   * Applies an approved revision fix plan to the existing session workspace.
+   */
+  public async applyRevision(
+    sessionId: string,
+    planContent: string,
+    feedback?: string
+  ): Promise<ExecutionSessionRecord> {
+    const session = this.executionStorage.getSession(sessionId);
+    if (!session) {
+      throw new Error(`Session "${sessionId}" not found.`);
+    }
+
+    if (!['completed', 'failed'].includes(session.status)) {
+      throw new Error(
+        `Revisions can only be applied to completed or failed sessions. Current status: ${session.status}`
+      );
+    }
+
+    // Acquire lock
+    let releaseLock: () => void;
+    try {
+      releaseLock = this.executionStorage.acquireExecutionLock(session.repositoryPath, session.issueIdentifier);
+    } catch (err: unknown) {
+      throw err;
+    }
+
+    const isDirect = !session.pendingRevision;
+    const revision: SessionRevision = session.pendingRevision || {
+      id: `rev_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      feedback: feedback || 'Direct prompt execution (token-optimized).',
+      planContent,
+      createdAt: new Date().toISOString(),
+    };
+
+    revision.planContent = planContent;
+    if (feedback) {
+      revision.feedback = feedback;
+    }
+    revision.approvedAt = new Date().toISOString();
+
+    const existingRevisions = session.revisions || [];
+    existingRevisions.push(revision);
+
+    // Reset isDone and record revision
+    this.executionStorage.updateSession(sessionId, {
+      isDone: false,
+      doneAt: undefined,
+      doneNote: undefined,
+      pendingRevision: null,
+      revisions: existingRevisions,
+      revisionCount: existingRevisions.length,
+    });
+
+    this.executionStorage.appendLog(
+      sessionId,
+      'info',
+      isDirect
+        ? `Developer dispatched direct prompt to Antigravity CLI (Token-optimized direct execution, Revision #${existingRevisions.length})...`
+        : `Developer approved revision fix plan. Applying modifications to worktree (Revision #${existingRevisions.length})...`
+    );
+
+    // Launch pipeline with revision plan
+    this.runPipeline(sessionId, planContent, releaseLock).catch(() => {});
+
+    return this.executionStorage.getSession(sessionId)!;
+  }
+
+  /**
+   * Marks a completed session as officially approved and Done by the developer.
+   */
+  public markSessionDone(
+    sessionId: string,
+    note?: string
+  ): ExecutionSessionRecord {
+    const session = this.executionStorage.getSession(sessionId);
+    if (!session) {
+      throw new Error(`Session "${sessionId}" not found.`);
+    }
+
+    if (session.status !== 'completed') {
+      throw new Error(
+        `Only completed sessions can be marked as Done. Current status: "${session.status}".`
+      );
+    }
+
+    const updated = this.executionStorage.updateSession(sessionId, {
+      isDone: true,
+      doneAt: new Date().toISOString(),
+      doneNote: note?.trim() || undefined,
+      progressMessage: 'Implementation accepted and marked as Done by developer.',
+    });
+
+    this.executionStorage.appendLog(
+      sessionId,
+      'info',
+      `Developer accepted implementation changes and marked session as Done.${note ? ` Note: ${note}` : ''}`
+    );
+
+    return updated!;
   }
 }

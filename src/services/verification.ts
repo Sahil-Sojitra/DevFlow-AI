@@ -151,7 +151,7 @@ export class VerificationService {
         cwd: targetDir,
         env: cleanEnv,
         timeout: timeoutMs,
-        shell: false,
+        shell: isWindows,
         windowsHide: true,
         maxBuffer: 2 * 1024 * 1024,
         encoding: 'utf8',

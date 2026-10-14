@@ -283,6 +283,9 @@ export class ExecutionStorageService {
             changedFilesCount: rec.changedFiles?.length ?? 0,
             verificationPassed: rec.verificationPassed ?? false,
             error: rec.error,
+            isDone: rec.isDone,
+            doneAt: rec.doneAt,
+            revisionCount: rec.revisionCount ?? (rec.revisions?.length ?? 0),
           });
         } catch {
           // Ignore corrupt file
