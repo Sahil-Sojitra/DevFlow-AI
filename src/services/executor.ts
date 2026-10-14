@@ -266,13 +266,22 @@ You are an expert software developer implementing an APPROVED implementation pla
 ## APPROVED IMPLEMENTATION PLAN
 ${planContent}
 
-## EXECUTION INSTRUCTIONS & SAFETY BOUNDARIES
-1. Implement the tasks specified in the approved plan.
-2. Adhere strictly to the existing code patterns, file structure, and design conventions in this repository.
-3. Limit modifications to files relevant to this feature. Do NOT perform unnecessary refactorings or modify unrelated files.
-4. Do NOT attempt to commit, push, or merge git branches. DevFlow AI strictly manages git operations.
-5. Do NOT invent missing backend endpoints or schemas. If an unapproved blocker is found, stop and report the blocker.
-6. Verify your changes before completing.
+## CRITICAL EXECUTION INSTRUCTIONS & SAFETY BOUNDARIES
+1. DIRECT FILE CREATION & EDITING ONLY:
+   - Create, modify, and delete the necessary code files directly in the repository using file write/edit tools.
+   - CRITICAL: Do NOT attempt to execute terminal or shell commands (e.g., RunCommand, npm, npx, pnpm, yarn, bit, git, dir, ls, etc.). Shell/terminal command execution is strictly disabled in headless automation mode and will cause immediate failure.
+   - If the implementation plan mentions CLI commands (e.g. "npm init", "npx create-...", "bit init", or scaffolding scripts), do NOT execute them in the shell. Instead, directly create, scaffold, and configure the corresponding files and dependencies directly on disk using file writing tools.
+2. AUTOMATED VERIFICATION IS HANDLED BY DEVFLOW:
+   - DevFlow AI automatically executes the full verification pipeline (TypeScript compilation, unit tests, linter, build) after your changes are written.
+   - Do NOT try to run build, test, or lint commands yourself.
+3. PRESERVATION & REPOSITORY CONVENTIONS:
+   - Adhere strictly to the existing code patterns, file structure, and design conventions in this repository.
+   - Limit modifications to files relevant to this feature. Do NOT perform unnecessary refactorings or modify unrelated files.
+   - Provide complete, robust implementations without placeholders or TODO stubs.
+4. NO GIT OPERATIONS:
+   - Do NOT attempt to run git commands (git commit, git push, git branch, etc.). DevFlow AI strictly manages git operations.
+5. REPORT BLOCKERS:
+   - Do NOT invent missing backend endpoints or schemas. If an unapproved blocker is found, stop and explain the blocker in your final response.
 `.trim();
 
       // Invoke Antigravity CLI with accept-edits mode
