@@ -381,21 +381,23 @@ ${planContent}
 
       let execResult;
       try {
-        // Invoke Antigravity CLI with accept-edits mode
+        // Invoke Antigravity CLI with stream-json mode for real-time progress
         execResult = await this.antigravity.executePrompt({
           workingDir: session.workingPath,
           prompt: implementationPrompt,
-          outputFormat: 'json',
+          outputFormat: 'stream-json',
           mode: 'accept-edits',
           effort: 'medium',
           timeoutMs: executionTimeoutMs,
           dangerouslySkipPermissions: true,
           onProgress: (chunk, stream) => {
-            if (stream === 'stderr') {
-              const trimmed = chunk.trim();
-              if (trimmed.length > 0) {
-                this.executionStorage.appendLog(sessionId, 'info', `[agy stderr] ${trimmed.slice(0, 300)}`);
-              }
+            const trimmed = chunk.trim();
+            if (trimmed.length > 0) {
+              this.executionStorage.appendLog(
+                sessionId,
+                stream === 'stderr' ? 'warn' : 'info',
+                trimmed
+              );
             }
           },
         });
@@ -487,6 +489,16 @@ ${planContent}
             this.executionStorage.appendLog(sessionId, 'info', `✓ [${res.name}] PASSED (${res.durationMs}ms)`);
           } else if (res.status === 'failed') {
             this.executionStorage.appendLog(sessionId, 'error', `✗ [${res.name}] FAILED: ${res.error || 'Check failed'}`);
+            if (res.output) {
+              const snippetLines = res.output
+                .split('\n')
+                .map((l) => l.trim())
+                .filter((l) => l.length > 0 && !l.startsWith('>') && !l.includes('npm run') && !l.includes('ELIFECYCLE'))
+                .slice(0, 5);
+              for (const line of snippetLines) {
+                this.executionStorage.appendLog(sessionId, 'error', `[${res.name} output] ${line}`);
+              }
+            }
           } else {
             this.executionStorage.appendLog(sessionId, 'info', `- [${res.name}] NOT CONFIGURED: ${res.output}`);
           }
@@ -535,11 +547,21 @@ ${planContent}
           const fixResult = await this.antigravity.executePrompt({
             workingDir: session.workingPath,
             prompt: autoFixPrompt,
-            outputFormat: 'json',
+            outputFormat: 'stream-json',
             mode: 'accept-edits',
             effort: 'medium',
             timeoutMs: executionTimeoutMs,
             dangerouslySkipPermissions: true,
+            onProgress: (chunk, stream) => {
+              const trimmed = chunk.trim();
+              if (trimmed.length > 0) {
+                this.executionStorage.appendLog(
+                  sessionId,
+                  stream === 'stderr' ? 'warn' : 'info',
+                  trimmed
+                );
+              }
+            },
           });
 
           if (!fixResult.success) {
@@ -548,6 +570,11 @@ ${planContent}
               'error',
               `Self-healing fix pass #${autoFixAttempt} failed to complete: ${fixResult.error || fixResult.stderr}`
             );
+          } else if (fixResult.parsedOutput?.response) {
+            const firstLine = fixResult.parsedOutput.response.trim().split('\n')[0];
+            if (firstLine) {
+              this.executionStorage.appendLog(sessionId, 'info', `[agy fix] ${firstLine}`);
+            }
           }
         }
       }

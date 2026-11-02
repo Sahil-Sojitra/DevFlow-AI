@@ -8,6 +8,7 @@ import {
   AntigravitySecurityError,
   AntigravityConcurrencyError,
   sanitizeEnvironment,
+  formatAgyStreamEvent,
 } from '../../src/adapters/antigravity.js';
 import type { AppConfig } from '../../src/config/env.js';
 
@@ -284,4 +285,82 @@ describe('AntigravityAdapter', () => {
       expect(res3.success).toBe(true);
     });
   });
+
+  describe('Stream-JSON Real-time Parsing', () => {
+    it('formats file writing, file reading, and search tool calls into clean logs', () => {
+      expect(
+        formatAgyStreamEvent({
+          event: 'step_update',
+          step_update: {
+            step_type: 'tool',
+            tool_name: 'write_to_file',
+            state: 'ACTIVE',
+            tool_info: { name: 'write_to_file', parameters: { Path: 'src/app/page.tsx' } },
+          },
+        })
+      ).toContain('📝 Writing file: src/app/page.tsx');
+
+      expect(
+        formatAgyStreamEvent({
+          event: 'step_update',
+          step_update: {
+            step_type: 'tool',
+            tool_name: 'view_file',
+            state: 'ACTIVE',
+            tool_info: { name: 'view_file', parameters: { Path: 'src/types/index.ts' } },
+          },
+        })
+      ).toContain('🔍 Reading file: src/types/index.ts');
+
+      expect(
+        formatAgyStreamEvent({
+          event: 'result',
+          result: { status: 'SUCCESS', duration_seconds: 4.2, usage: { total_tokens: 1200 } },
+        })
+      ).toContain('Agent completed execution (4.2s, 1200 tokens)');
+    });
+
+    it('streams real-time output chunks and parses final result in stream-json mode', async () => {
+      const mock = createMockChildProcess();
+      const mockSpawn = vi.fn().mockReturnValue(mock.child);
+      const adapter = new AntigravityAdapter(mockConfig, mockSpawn as any);
+
+      const progressLogs: string[] = [];
+      const promise = adapter.executePrompt({
+        workingDir: allowedDir,
+        prompt: 'Implement feature',
+        outputFormat: 'stream-json',
+        onProgress: (msg) => progressLogs.push(msg),
+      });
+
+      // Emit stream-json lines
+      mock.sendStdout(JSON.stringify({
+        event: 'step_update',
+        step_update: {
+          step_type: 'tool',
+          tool_name: 'write_to_file',
+          state: 'ACTIVE',
+          tool_info: { name: 'write_to_file', parameters: { Path: 'src/file.ts' } },
+        },
+      }) + '\n');
+
+      mock.sendStdout(JSON.stringify({
+        event: 'result',
+        result: {
+          status: 'SUCCESS',
+          response: 'Feature implemented cleanly',
+          duration_seconds: 5.0,
+          usage: { total_tokens: 500 },
+        },
+      }) + '\n');
+
+      mock.emitClose(0);
+      const result = await promise;
+
+      expect(result.success).toBe(true);
+      expect(result.parsedOutput?.response).toBe('Feature implemented cleanly');
+      expect(progressLogs.some((l) => l.includes('📝 Writing file: src/file.ts'))).toBe(true);
+    });
+  });
+
 });

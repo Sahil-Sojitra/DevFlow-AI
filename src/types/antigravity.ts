@@ -53,7 +53,7 @@ export const AntigravityPromptOptionsSchema = z.object({
     .min(0, 'Timeout must be non-negative (0 disables timeout)')
     .optional(),
   outputFormat: z
-    .enum(['json', 'text'])
+    .enum(['json', 'text', 'stream-json'])
     .default('json'),
   mode: z
     .enum(['accept-edits', 'auto', 'plan'])

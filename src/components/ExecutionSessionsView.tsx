@@ -2557,17 +2557,22 @@ export function ExecutionSessionsView({
                       <div style={{ color: 'var(--text-muted)' }}>No logs recorded yet.</div>
                     ) : (
                       sessionDetail.logs.map((log, idx) => {
-                        let color = '#e2e8f0';
-                        if (log.level === 'error') color = '#fca5a5';
-                        if (log.level === 'warn') color = '#fef08a';
-                        if (log.level === 'info') color = '#93c5fd';
+                        let color = '#d4d4d8';
+                        if (log.level === 'error') color = '#f87171';
+                        else if (log.level === 'warn') color = '#fde047';
+                        else if (log.message.startsWith('[agy]') || log.message.startsWith('[agy tool]')) color = '#38bdf8';
+                        else if (log.message.startsWith('[agy agent]')) color = '#a1a1aa';
+                        else if (log.message.startsWith('[agy result]')) color = '#34d399';
+                        else if (log.message.includes('PASSED') || log.message.startsWith('✓')) color = '#4ade80';
+                        else if (log.message.includes('FAILED') || log.message.startsWith('✗') || log.message.includes('output]')) color = '#f87171';
+                        else if (log.level === 'info') color = '#93c5fd';
 
                         return (
                           <div key={idx} style={{ marginBottom: '0.35rem', lineHeight: 1.45 }}>
-                            <span style={{ color: 'var(--text-muted)', marginRight: '0.5rem' }}>
+                            <span style={{ color: 'var(--text-muted)', marginRight: '0.5rem', userSelect: 'none' }}>
                               [{new Date(log.timestamp).toLocaleTimeString()}]
                             </span>
-                            <span style={{ color, fontWeight: log.level === 'error' ? 700 : 400 }}>
+                            <span style={{ color, fontWeight: log.level === 'error' || log.message.includes('FAILED') ? 600 : 400 }}>
                               {log.message}
                             </span>
                           </div>

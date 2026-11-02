@@ -63,6 +63,67 @@ export function sanitizeEnvironment(
 }
 
 /**
+ * Formats an NDJSON stream line from Antigravity CLI into a clean human-readable log message.
+ */
+export function formatAgyStreamEvent(eventObj: any): string | null {
+  if (!eventObj || typeof eventObj !== 'object') return null;
+
+  if (eventObj.event === 'step_update' && eventObj.step_update) {
+    const step = eventObj.step_update;
+
+    // Tool usage events (file writes, edits, reads, searches)
+    if (step.step_type === 'tool' && step.tool_info) {
+      const toolName = step.tool_name || step.tool_info.name || 'tool';
+      const params = step.tool_info.parameters || {};
+      const rawPath = params.Path || params.path || params.file_path || '';
+      const displayPath = rawPath ? rawPath.replace(/\\/g, '/').split('/').slice(-3).join('/') : '';
+
+      if (step.state === 'ACTIVE') {
+        if (toolName === 'write_to_file' || toolName === 'replace_file_content' || toolName === 'sed_file') {
+          return `[agy] 📝 Writing file: ${displayPath || rawPath}`;
+        } else if (toolName === 'view_file' || toolName === 'read_resource' || toolName === 'read_url_content') {
+          return `[agy] 🔍 Reading file: ${displayPath || rawPath}`;
+        } else if (toolName === 'grep_search' || toolName === 'find_by_name') {
+          return `[agy] 🔎 Searching codebase: "${params.query || params.pattern || ''}"`;
+        } else {
+          return `[agy] ⚙️ Tool active: ${toolName}`;
+        }
+      } else if (step.state === 'DONE') {
+        if (toolName === 'write_to_file' || toolName === 'replace_file_content') {
+          return `[agy] ✓ Saved modifications to ${displayPath || rawPath}`;
+        }
+      } else if (step.state === 'ERROR') {
+        const errorMsg = step.tool_info.error?.message || 'Tool execution error';
+        return `[agy] ⚠️ Tool failed (${toolName}): ${errorMsg.slice(0, 200)}`;
+      }
+    }
+
+    // Agent response / thinking events
+    if (step.step_type === 'agent_response') {
+      if (step.text_delta && typeof step.text_delta === 'string') {
+        const trimmed = step.text_delta.trim();
+        if (trimmed.length > 0) {
+          return `[agy agent] ${trimmed}`;
+        }
+      } else if (step.state === 'DONE' && step.duration_seconds) {
+        const tokenMsg = step.usage?.total_tokens ? ` (${step.usage.total_tokens} tokens)` : '';
+        return `[agy] Step #${step.step_index} finished in ${step.duration_seconds.toFixed(1)}s${tokenMsg}`;
+      }
+    }
+  }
+
+  if (eventObj.event === 'result' && eventObj.result) {
+    const res = eventObj.result;
+    const dur = res.duration_seconds ? `${res.duration_seconds.toFixed(1)}s` : '';
+    const tokens = res.usage?.total_tokens ? `${res.usage.total_tokens} tokens` : '';
+    const stats = [dur, tokens].filter(Boolean).join(', ');
+    return `[agy result] Agent completed execution${stats ? ` (${stats})` : ''}.`;
+  }
+
+  return null;
+}
+
+/**
  * Adapter for invoking the Antigravity CLI in a safe, non-interactive, and monitored manner.
  */
 export class AntigravityAdapter {
@@ -104,7 +165,7 @@ export class AntigravityAdapter {
   }
 
   /**
-   * Executes a harmless, read-only prompt against the Antigravity CLI non-interactively.
+   * Executes a prompt against the Antigravity CLI non-interactively.
    */
   public async executePrompt(
     rawOptions: AntigravityPromptOptions
@@ -179,13 +240,14 @@ export class AntigravityAdapter {
     cwd: string;
     env: NodeJS.ProcessEnv;
     timeoutMs: number;
-    outputFormat: 'json' | 'text';
+    outputFormat: 'json' | 'text' | 'stream-json';
     startTime: number;
     onProgress?: (chunk: string, stream: 'stdout' | 'stderr') => void;
   }): Promise<AntigravityExecutionResult> {
     return new Promise((resolve) => {
       let stdoutData = '';
       let stderrData = '';
+      let stdoutLineBuffer = '';
       let timedOut = false;
       let timer: NodeJS.Timeout | null = null;
       let child: ChildProcess;
@@ -233,8 +295,32 @@ export class AntigravityAdapter {
         child.stdout.on('data', (chunk) => {
           const str = chunk.toString();
           stdoutData += str;
-          if (params.onProgress) {
-            params.onProgress(str, 'stdout');
+
+          if (params.outputFormat === 'stream-json') {
+            stdoutLineBuffer += str;
+            const lines = stdoutLineBuffer.split('\n');
+            stdoutLineBuffer = lines.pop() || ''; // Keep partial line in buffer
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed) continue;
+              try {
+                const parsed = JSON.parse(trimmed);
+                const formatted = formatAgyStreamEvent(parsed);
+                if (formatted && params.onProgress) {
+                  params.onProgress(formatted, 'stdout');
+                }
+              } catch {
+                // If line isn't valid JSON, still surface it if meaningful
+                if (params.onProgress && !trimmed.startsWith('{')) {
+                  params.onProgress(`[agy] ${trimmed}`, 'stdout');
+                }
+              }
+            }
+          } else {
+            if (params.onProgress) {
+              params.onProgress(str, 'stdout');
+            }
           }
         });
       }
@@ -291,7 +377,51 @@ export class AntigravityAdapter {
         let parsedOutput: AntigravityExecutionResult['parsedOutput'] = null;
         let parseError: string | undefined;
 
-        if (params.outputFormat === 'json' && stdoutData.trim().length > 0) {
+        if (params.outputFormat === 'stream-json' && stdoutData.trim().length > 0) {
+          try {
+            const lines = stdoutData.trim().split('\n');
+            let foundResult: any = null;
+
+            for (let i = lines.length - 1; i >= 0; i--) {
+              const line = lines[i].trim();
+              if (line.includes('"event":"result"')) {
+                try {
+                  const data = JSON.parse(line);
+                  if (data.result) {
+                    foundResult = data.result;
+                    break;
+                  }
+                } catch {
+                  // Continue searching
+                }
+              }
+            }
+
+            if (foundResult) {
+              const validated = AntigravityJsonOutputSchema.safeParse(foundResult);
+              if (validated.success) {
+                parsedOutput = validated.data;
+              } else {
+                parsedOutput = foundResult;
+              }
+            } else {
+              // Fallback: search backwards for any line with response or status
+              for (let i = lines.length - 1; i >= 0; i--) {
+                try {
+                  const parsed = JSON.parse(lines[i].trim());
+                  if (parsed.response !== undefined || parsed.status !== undefined) {
+                    parsedOutput = parsed;
+                    break;
+                  }
+                } catch {
+                  // Continue
+                }
+              }
+            }
+          } catch (streamErr: unknown) {
+            parseError = `Failed to parse Antigravity stream-json: ${streamErr instanceof Error ? streamErr.message : String(streamErr)}`;
+          }
+        } else if (params.outputFormat === 'json' && stdoutData.trim().length > 0) {
           try {
             const rawJson = JSON.parse(stdoutData.trim());
             const validated = AntigravityJsonOutputSchema.safeParse(rawJson);
