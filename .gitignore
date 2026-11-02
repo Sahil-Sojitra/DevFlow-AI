@@ -31,3 +31,5 @@ scratch/
 
 # Local runtime data
 data/
+
+*.tsbuildinfo
