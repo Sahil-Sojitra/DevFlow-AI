@@ -11,6 +11,7 @@ import {
   parseRemoteUrl,
   generatePrWebUrl,
   pushBranch,
+  parseStructuredDiff,
 } from '../../src/services/git-ops.js';
 import * as gitOps from '../../src/services/git-ops.js';
 
@@ -115,5 +116,47 @@ describe('Git Operations Service', () => {
     const res = pushBranch(process.cwd(), 'feat/dummy', 'non-existent-remote-xyz');
     expect(res.success).toBe(false);
     expect(res.error).toBeDefined();
+  });
+
+  it('accurately parses raw unified diff into structured files, chunks, and line numbers', () => {
+    const mockDiff = [
+      'diff --git a/src/auth.ts b/src/auth.ts',
+      'index 123..456 100644',
+      '--- a/src/auth.ts',
+      '+++ b/src/auth.ts',
+      '@@ -1,4 +1,5 @@',
+      ' export function login() {',
+      '-  return false;',
+      '+  // Added auth validation',
+      '+  return true;',
+      ' }',
+      'diff --git a/src/new-helper.ts b/src/new-helper.ts',
+      'new file mode 100644',
+      '--- /dev/null',
+      '+++ b/src/new-helper.ts',
+      '@@ -0,0 +1,2 @@',
+      '+export const secretKey = "test";',
+      '+export const check = true;',
+    ].join('\n');
+
+    const result = parseStructuredDiff(mockDiff);
+
+    expect(result.files.length).toBe(2);
+    expect(result.totalAdditions).toBe(4);
+    expect(result.totalDeletions).toBe(1);
+
+    const authFile = result.files[0];
+    expect(authFile.filePath).toBe('src/auth.ts');
+    expect(authFile.status).toBe('modified');
+    expect(authFile.additions).toBe(2);
+    expect(authFile.deletions).toBe(1);
+    expect(authFile.chunks.length).toBe(1);
+    expect(authFile.chunks[0].lines.some((l) => l.type === 'add' && l.content === '  return true;')).toBe(true);
+
+    const helperFile = result.files[1];
+    expect(helperFile.filePath).toBe('src/new-helper.ts');
+    expect(helperFile.status).toBe('added');
+    expect(helperFile.additions).toBe(2);
+    expect(helperFile.deletions).toBe(0);
   });
 });

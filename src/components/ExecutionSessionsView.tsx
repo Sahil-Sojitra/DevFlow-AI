@@ -32,7 +32,12 @@ import {
   GitMerge,
   GitPullRequest,
   Copy,
+  ChevronUp,
+  Send,
+  Filter,
+  Code,
 } from 'lucide-react';
+import type { FileDiff } from '@/services/git-ops';
 import type {
   ExecutionSessionRecord,
   ExecutionSessionSummary,
@@ -208,6 +213,31 @@ export function ExecutionSessionsView({
   const [prBody, setPrBody] = useState('');
   const [prIsDraft, setPrIsDraft] = useState(false);
 
+  // Phase 5: Structured Diff and Inline Revision states
+  const [structuredDiffFiles, setStructuredDiffFiles] = useState<FileDiff[]>([]);
+  const [diffAdditions, setDiffAdditions] = useState<number>(0);
+  const [diffDeletions, setDiffDeletions] = useState<number>(0);
+  const [selectedDiffFile, setSelectedDiffFile] = useState<string | null>(null);
+  const [diffSearchQuery, setDiffSearchQuery] = useState('');
+  const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
+
+  // Inline Revision Feedback state
+  const [inlineFeedback, setInlineFeedback] = useState('');
+  const [applyingInlineRevision, setApplyingInlineRevision] = useState(false);
+  const [inlineRevisionError, setInlineRevisionError] = useState<string | null>(null);
+
+  const toggleFileCollapse = (filePath: string) => {
+    setCollapsedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(filePath)) {
+        next.delete(filePath);
+      } else {
+        next.add(filePath);
+      }
+      return next;
+    });
+  };
+
   const openPrModal = () => {
     if (sessionDetail) {
       setPrTitle(`feat(${sessionDetail.issueIdentifier}): ${sessionDetail.issueTitle}`);
@@ -325,15 +355,64 @@ export function ExecutionSessionsView({
       if (res.ok) {
         const data = await res.json();
         setDiffText(data.diff || 'No diff available.');
+        setStructuredDiffFiles(data.files || []);
+        setDiffAdditions(data.totalAdditions || 0);
+        setDiffDeletions(data.totalDeletions || 0);
       } else {
         setDiffText('Failed to fetch diff.');
+        setStructuredDiffFiles([]);
       }
     } catch (err: unknown) {
       setDiffText(`Error loading diff: ${(err as Error).message}`);
+      setStructuredDiffFiles([]);
     } finally {
       setLoadingDiff(false);
     }
   }, []);
+
+  const handleApplyInlineRevision = async () => {
+    if (!selectedSessionId || !inlineFeedback.trim() || applyingInlineRevision) return;
+    setApplyingInlineRevision(true);
+    setInlineRevisionError(null);
+    try {
+      // 1. Generate revision plan based on targeted feedback
+      const planRes = await fetch(`/api/sessions/${selectedSessionId}/revision/plan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feedback: inlineFeedback.trim() }),
+      });
+      const planData = await planRes.json();
+      if (!planRes.ok) {
+        setInlineRevisionError(planData.error || 'Failed to prepare revision plan');
+        return;
+      }
+
+      // 2. Apply revision plan directly to ticket branch
+      const applyRes = await fetch(`/api/sessions/${selectedSessionId}/revision/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          planContent: planData.revision?.content || inlineFeedback.trim(),
+          feedback: inlineFeedback.trim(),
+        }),
+      });
+
+      if (!applyRes.ok) {
+        const applyData = await applyRes.json();
+        setInlineRevisionError(applyData.error || 'Failed to execute revision on branch');
+        return;
+      }
+
+      setInlineFeedback('');
+      setActiveTab('logs');
+      await fetchSessionDetail(selectedSessionId);
+      await fetchSessions();
+    } catch (err: unknown) {
+      setInlineRevisionError((err as Error).message || 'Failed to apply revision');
+    } finally {
+      setApplyingInlineRevision(false);
+    }
+  };
 
   // Initial load
   useEffect(() => {
@@ -1989,62 +2068,459 @@ export function ExecutionSessionsView({
                       </div>
                     )}
 
-                    {/* Unified Diff Box */}
-                    <div style={{ marginTop: '1rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#fff' }}>Unified Git Diff</span>
-                        <button
-                          onClick={() => fetchDiff(sessionDetail.id)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            color: 'var(--accent-primary)',
-                            fontSize: '0.75rem',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Refresh Diff
-                        </button>
-                      </div>
-
+                    {/* Phase 5: Interactive In-Browser Diff Reviewer & Inline Revision Loop */}
+                    <div style={{ marginTop: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      {/* Diff Header Bar */}
                       <div
                         style={{
-                          backgroundColor: '#0a0d13',
-                          border: '1px solid var(--border-subtle)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          flexWrap: 'wrap',
+                          gap: '0.75rem',
+                          padding: '0.75rem 1rem',
+                          backgroundColor: 'var(--bg-tertiary)',
                           borderRadius: 'var(--radius-sm)',
-                          padding: '1rem',
-                          maxHeight: '400px',
-                          overflowY: 'auto',
+                          border: '1px solid var(--border-subtle)',
                         }}
                       >
-                        {loadingDiff ? (
-                          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Loading diff...</div>
-                        ) : (
-                          <pre style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '0.78rem', lineHeight: 1.5 }}>
-                            {(diffText || 'No changes detected.').split('\n').map((line, idx) => {
-                              let color = '#e2e8f0';
-                              let bg = 'transparent';
-                              if (line.startsWith('+') && !line.startsWith('+++')) {
-                                color = '#86efac';
-                                bg = 'rgba(34, 197, 94, 0.1)';
-                              } else if (line.startsWith('-') && !line.startsWith('---')) {
-                                color = '#fca5a5';
-                                bg = 'rgba(239, 68, 68, 0.1)';
-                              } else if (line.startsWith('@@')) {
-                                color = '#93c5fd';
-                              } else if (line.startsWith('diff --git')) {
-                                color = '#fef08a';
-                              }
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#fff' }}>
+                            Interactive Git Diff
+                          </span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            ({structuredDiffFiles.length} file{structuredDiffFiles.length === 1 ? '' : 's'})
+                          </span>
+                          <div style={{ display: 'flex', gap: '0.35rem' }}>
+                            <span
+                              style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                padding: '0.1rem 0.45rem',
+                                borderRadius: 'var(--radius-full)',
+                                backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                                color: '#86efac',
+                              }}
+                            >
+                              +{diffAdditions}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                padding: '0.1rem 0.45rem',
+                                borderRadius: 'var(--radius-full)',
+                                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                                color: '#fca5a5',
+                              }}
+                            >
+                              -{diffDeletions}
+                            </span>
+                          </div>
+                        </div>
 
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                          <button
+                            onClick={() => {
+                              if (collapsedFiles.size === structuredDiffFiles.length) {
+                                setCollapsedFiles(new Set());
+                              } else {
+                                setCollapsedFiles(new Set(structuredDiffFiles.map((f) => f.filePath)));
+                              }
+                            }}
+                            style={{
+                              background: 'none',
+                              border: '1px solid var(--border-default)',
+                              borderRadius: 'var(--radius-sm)',
+                              color: 'var(--text-secondary)',
+                              fontSize: '0.75rem',
+                              padding: '0.25rem 0.6rem',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {collapsedFiles.size === structuredDiffFiles.length ? 'Expand All' : 'Collapse All'}
+                          </button>
+
+                          <button
+                            onClick={() => fetchDiff(sessionDetail.id)}
+                            style={{
+                              background: 'none',
+                              border: '1px solid var(--accent-primary)',
+                              borderRadius: 'var(--radius-sm)',
+                              color: 'var(--accent-primary)',
+                              fontSize: '0.75rem',
+                              padding: '0.25rem 0.6rem',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Refresh Diff
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Inline Revision Feedback Box */}
+                      <div
+                        style={{
+                          padding: '1rem',
+                          backgroundColor: 'rgba(56, 189, 248, 0.05)',
+                          border: '1px solid rgba(56, 189, 248, 0.25)',
+                          borderRadius: 'var(--radius-md)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.65rem',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                            <Sparkles size={16} color="var(--accent-primary)" />
+                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#fff' }}>
+                              Request Changes / Inline AI Revision
+                            </span>
+                          </div>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            Applies tweaks directly to branch "{sessionDetail.ticketBranch || sessionDetail.branch}"
+                          </span>
+                        </div>
+
+                        {/* Quick preset chips */}
+                        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                          {[
+                            '+ Add edge-case test coverage',
+                            '+ Improve error handling & validation',
+                            '+ Refactor and clean up code',
+                            '+ Add TypeScript types and documentation',
+                          ].map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => {
+                                setInlineFeedback((prev) =>
+                                  prev ? `${prev}\n${preset.replace(/^\+\s*/, '')}` : preset.replace(/^\+\s*/, '')
+                                );
+                              }}
+                              style={{
+                                background: 'rgba(255, 255, 255, 0.05)',
+                                border: '1px solid var(--border-subtle)',
+                                borderRadius: 'var(--radius-full)',
+                                color: 'var(--text-secondary)',
+                                fontSize: '0.72rem',
+                                padding: '0.15rem 0.6rem',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {preset}
+                            </button>
+                          ))}
+                        </div>
+
+                        {inlineRevisionError && (
+                          <div
+                            style={{
+                              padding: '0.5rem 0.75rem',
+                              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                              border: '1px solid var(--error)',
+                              borderRadius: 'var(--radius-sm)',
+                              color: '#fca5a5',
+                              fontSize: '0.78rem',
+                            }}
+                          >
+                            {inlineRevisionError}
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                          <textarea
+                            rows={2}
+                            value={inlineFeedback}
+                            onChange={(e) => setInlineFeedback(e.target.value)}
+                            placeholder="Describe any adjustments needed (e.g. 'Make email optional in registration schema and add test case')..."
+                            disabled={applyingInlineRevision}
+                            style={{
+                              flex: 1,
+                              padding: '0.55rem 0.75rem',
+                              borderRadius: 'var(--radius-sm)',
+                              border: '1px solid var(--border-default)',
+                              backgroundColor: 'var(--bg-primary)',
+                              color: 'var(--text-primary)',
+                              fontSize: '0.8rem',
+                              fontFamily: 'inherit',
+                              resize: 'vertical',
+                            }}
+                          />
+
+                          <button
+                            onClick={handleApplyInlineRevision}
+                            disabled={!inlineFeedback.trim() || applyingInlineRevision}
+                            style={{
+                              padding: '0.55rem 1.15rem',
+                              borderRadius: 'var(--radius-sm)',
+                              backgroundColor: !inlineFeedback.trim() || applyingInlineRevision ? 'var(--bg-tertiary)' : 'var(--accent-primary)',
+                              color: !inlineFeedback.trim() || applyingInlineRevision ? 'var(--text-muted)' : '#fff',
+                              border: 'none',
+                              fontSize: '0.82rem',
+                              fontWeight: 600,
+                              cursor: !inlineFeedback.trim() || applyingInlineRevision ? 'not-allowed' : 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.45rem',
+                              whiteSpace: 'nowrap',
+                              height: '42px',
+                            }}
+                          >
+                            {applyingInlineRevision ? (
+                              <>
+                                <Loader2 size={14} className="spin" />
+                                <span>Applying...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Send size={14} />
+                                <span>Apply Revision</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* File Filter Chips */}
+                      {structuredDiffFiles.length > 1 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                            <Filter size={13} />
+                            <span>Filter File:</span>
+                          </div>
+                          <button
+                            onClick={() => setSelectedDiffFile(null)}
+                            style={{
+                              padding: '0.2rem 0.6rem',
+                              borderRadius: 'var(--radius-full)',
+                              fontSize: '0.72rem',
+                              border: 'none',
+                              backgroundColor: selectedDiffFile === null ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
+                              color: selectedDiffFile === null ? '#fff' : 'var(--text-secondary)',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            All ({structuredDiffFiles.length})
+                          </button>
+                          {structuredDiffFiles.map((f) => (
+                            <button
+                              key={f.filePath}
+                              onClick={() => setSelectedDiffFile(selectedDiffFile === f.filePath ? null : f.filePath)}
+                              style={{
+                                padding: '0.2rem 0.6rem',
+                                borderRadius: 'var(--radius-full)',
+                                fontSize: '0.72rem',
+                                border: '1px solid var(--border-subtle)',
+                                backgroundColor: selectedDiffFile === f.filePath ? 'rgba(56, 189, 248, 0.2)' : 'var(--bg-primary)',
+                                color: selectedDiffFile === f.filePath ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                              }}
+                            >
+                              <span>{f.filePath.split('/').pop()}</span>
+                              <span style={{ color: '#86efac', fontSize: '0.68rem' }}>+{f.additions}</span>
+                              <span style={{ color: '#fca5a5', fontSize: '0.68rem' }}>-{f.deletions}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Diff Body Content */}
+                      {loadingDiff ? (
+                        <div
+                          style={{
+                            padding: '2rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.65rem',
+                            backgroundColor: '#0a0d13',
+                            borderRadius: 'var(--radius-md)',
+                            border: '1px solid var(--border-subtle)',
+                            color: 'var(--text-secondary)',
+                            fontSize: '0.85rem',
+                          }}
+                        >
+                          <Loader2 size={16} className="spin" color="var(--accent-primary)" />
+                          <span>Generating structured git diff...</span>
+                        </div>
+                      ) : structuredDiffFiles.length === 0 ? (
+                        <div
+                          style={{
+                            backgroundColor: '#0a0d13',
+                            border: '1px solid var(--border-subtle)',
+                            borderRadius: 'var(--radius-sm)',
+                            padding: '1.5rem',
+                            textAlign: 'center',
+                            color: 'var(--text-muted)',
+                            fontSize: '0.82rem',
+                          }}
+                        >
+                          {diffText || 'No differences detected between ticket branch and base branch.'}
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                          {structuredDiffFiles
+                            .filter((f) => !selectedDiffFile || f.filePath === selectedDiffFile)
+                            .map((file) => {
+                              const isCollapsed = collapsedFiles.has(file.filePath);
                               return (
-                                <div key={idx} style={{ color, backgroundColor: bg, padding: '0 0.25rem' }}>
-                                  {line || ' '}
+                                <div
+                                  key={file.filePath}
+                                  style={{
+                                    backgroundColor: '#0a0d13',
+                                    border: '1px solid var(--border-subtle)',
+                                    borderRadius: 'var(--radius-md)',
+                                    overflow: 'hidden',
+                                  }}
+                                >
+                                  {/* File Diff Header */}
+                                  <div
+                                    onClick={() => toggleFileCollapse(file.filePath)}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      padding: '0.65rem 1rem',
+                                      backgroundColor: 'var(--bg-secondary)',
+                                      borderBottom: isCollapsed ? 'none' : '1px solid var(--border-subtle)',
+                                      cursor: 'pointer',
+                                      userSelect: 'none',
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                                      {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                                      <Code size={14} color="var(--accent-primary)" />
+                                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.82rem', fontWeight: 600, color: '#fff' }}>
+                                        {file.filePath}
+                                      </span>
+                                      <span
+                                        style={{
+                                          fontSize: '0.68rem',
+                                          fontWeight: 700,
+                                          textTransform: 'uppercase',
+                                          padding: '0.1rem 0.4rem',
+                                          borderRadius: 'var(--radius-sm)',
+                                          backgroundColor:
+                                            file.status === 'added'
+                                              ? 'rgba(34, 197, 94, 0.15)'
+                                              : file.status === 'deleted'
+                                              ? 'rgba(239, 68, 68, 0.15)'
+                                              : 'rgba(56, 189, 248, 0.15)',
+                                          color:
+                                            file.status === 'added'
+                                              ? '#86efac'
+                                              : file.status === 'deleted'
+                                              ? '#fca5a5'
+                                              : 'var(--accent-primary)',
+                                        }}
+                                      >
+                                        {file.status}
+                                      </span>
+                                    </div>
+
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem', fontFamily: 'var(--font-mono)' }}>
+                                      <span style={{ color: '#86efac' }}>+{file.additions}</span>
+                                      <span style={{ color: '#fca5a5' }}>-{file.deletions}</span>
+                                    </div>
+                                  </div>
+
+                                  {/* Chunks & Line-by-Line Table */}
+                                  {!isCollapsed && (
+                                    <div style={{ overflowX: 'auto', fontFamily: 'var(--font-mono)', fontSize: '0.78rem' }}>
+                                      {file.chunks.map((chunk, cIdx) => (
+                                        <div key={cIdx}>
+                                          {/* Hunk Header */}
+                                          <div
+                                            style={{
+                                              padding: '0.35rem 1rem',
+                                              backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                                              color: 'var(--accent-primary)',
+                                              fontSize: '0.72rem',
+                                              borderBottom: '1px solid rgba(56, 189, 248, 0.15)',
+                                            }}
+                                          >
+                                            @@ -{chunk.oldStart},{chunk.oldLines} +{chunk.newStart},{chunk.newLines} @@ {chunk.header}
+                                          </div>
+
+                                          {/* Lines */}
+                                          {chunk.lines.map((line, lIdx) => {
+                                            const isAdd = line.type === 'add';
+                                            const isDel = line.type === 'delete';
+                                            return (
+                                              <div
+                                                key={lIdx}
+                                                style={{
+                                                  display: 'grid',
+                                                  gridTemplateColumns: '45px 45px 24px 1fr',
+                                                  backgroundColor: isAdd
+                                                    ? 'rgba(34, 197, 94, 0.1)'
+                                                    : isDel
+                                                    ? 'rgba(239, 68, 68, 0.12)'
+                                                    : 'transparent',
+                                                  color: isAdd ? '#86efac' : isDel ? '#fca5a5' : '#e2e8f0',
+                                                  lineHeight: 1.5,
+                                                }}
+                                              >
+                                                {/* Old Line # */}
+                                                <span
+                                                  style={{
+                                                    textAlign: 'right',
+                                                    paddingRight: '0.5rem',
+                                                    color: 'var(--text-muted)',
+                                                    userSelect: 'none',
+                                                    borderRight: '1px solid var(--border-subtle)',
+                                                    fontSize: '0.72rem',
+                                                  }}
+                                                >
+                                                  {line.oldLineNumber ?? ''}
+                                                </span>
+
+                                                {/* New Line # */}
+                                                <span
+                                                  style={{
+                                                    textAlign: 'right',
+                                                    paddingRight: '0.5rem',
+                                                    color: 'var(--text-muted)',
+                                                    userSelect: 'none',
+                                                    borderRight: '1px solid var(--border-subtle)',
+                                                    fontSize: '0.72rem',
+                                                  }}
+                                                >
+                                                  {line.newLineNumber ?? ''}
+                                                </span>
+
+                                                {/* Gutter marker */}
+                                                <span
+                                                  style={{
+                                                    textAlign: 'center',
+                                                    fontWeight: 700,
+                                                    userSelect: 'none',
+                                                    color: isAdd ? '#86efac' : isDel ? '#fca5a5' : 'transparent',
+                                                  }}
+                                                >
+                                                  {isAdd ? '+' : isDel ? '-' : ' '}
+                                                </span>
+
+                                                {/* Line text */}
+                                                <span style={{ padding: '0 0.5rem', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                                                  {line.content || ' '}
+                                                </span>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
-                          </pre>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

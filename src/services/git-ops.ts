@@ -473,21 +473,42 @@ export function detectChangedFiles(
 
 /**
  * Captures a unified git diff for the target directory, bounded to prevent memory blowup.
+ * Can compare against a base branch/commit or working tree HEAD.
  */
-export function getUnifiedDiff(targetDir: string, maxBytes = 200000): string {
+export function getUnifiedDiff(
+  targetDir: string,
+  baseCommitOrBranch?: string,
+  maxBytes = 300000
+): string {
   let diffOutput = '';
-  try {
-    // 1. Staged and unstaged changes against HEAD
-    diffOutput = runGit(['diff', 'HEAD'], targetDir, 20000);
-  } catch {
+
+  // 1. If baseCommitOrBranch is provided (e.g. 'main' or baselineCommit), try diffing against it
+  if (baseCommitOrBranch) {
     try {
-      diffOutput = runGit(['diff'], targetDir, 10000);
+      diffOutput = runGit(['diff', `${baseCommitOrBranch}...HEAD`], targetDir, 25000);
     } catch {
-      diffOutput = '';
+      try {
+        diffOutput = runGit(['diff', baseCommitOrBranch], targetDir, 20000);
+      } catch {
+        diffOutput = '';
+      }
     }
   }
 
-  // 2. Untracked files handling: generate diff representation for untracked files
+  // 2. If no diff against base, or no base provided, try uncommitted diff against HEAD
+  if (!diffOutput || diffOutput.trim().length === 0) {
+    try {
+      diffOutput = runGit(['diff', 'HEAD'], targetDir, 20000);
+    } catch {
+      try {
+        diffOutput = runGit(['diff'], targetDir, 10000);
+      } catch {
+        diffOutput = '';
+      }
+    }
+  }
+
+  // 3. Untracked files handling: generate diff representation for untracked files
   try {
     const status = inspectGitWorkingTree(targetDir);
     for (const untrackedFile of status.untracked.slice(0, 20)) {
@@ -517,6 +538,158 @@ export function getUnifiedDiff(targetDir: string, maxBytes = 200000): string {
   }
 
   return diffOutput.trim() || 'No changes detected.';
+}
+
+export interface DiffLine {
+  type: 'add' | 'delete' | 'context';
+  content: string;
+  oldLineNumber?: number;
+  newLineNumber?: number;
+}
+
+export interface DiffChunk {
+  header: string;
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  lines: DiffLine[];
+}
+
+export interface FileDiff {
+  filePath: string;
+  oldPath?: string;
+  status: 'added' | 'deleted' | 'modified' | 'renamed';
+  additions: number;
+  deletions: number;
+  chunks: DiffChunk[];
+}
+
+export interface StructuredDiffResult {
+  rawDiff: string;
+  files: FileDiff[];
+  totalAdditions: number;
+  totalDeletions: number;
+}
+
+/**
+ * Parses raw unified git diff into structured file diffs and hunks with line numbers.
+ */
+export function parseStructuredDiff(rawDiff: string): StructuredDiffResult {
+  if (!rawDiff || rawDiff.trim() === 'No changes detected.') {
+    return {
+      rawDiff: rawDiff || '',
+      files: [],
+      totalAdditions: 0,
+      totalDeletions: 0,
+    };
+  }
+
+  const lines = rawDiff.split('\n');
+  const files: FileDiff[] = [];
+  let currentFile: FileDiff | null = null;
+  let currentChunk: DiffChunk | null = null;
+  let currentOld = 0;
+  let currentNew = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // File header: diff --git a/path b/path
+    if (line.startsWith('diff --git ')) {
+      const match = line.match(/^diff --git a\/(.+) b\/(.+)$/);
+      const filePath = match ? match[2] : line.replace('diff --git ', '').trim();
+      currentFile = {
+        filePath,
+        oldPath: match ? match[1] : undefined,
+        status: 'modified',
+        additions: 0,
+        deletions: 0,
+        chunks: [],
+      };
+      files.push(currentFile);
+      currentChunk = null;
+      continue;
+    }
+
+    if (!currentFile) continue;
+
+    // Detect file mode / status
+    if (line.startsWith('new file mode')) {
+      currentFile.status = 'added';
+      continue;
+    }
+    if (line.startsWith('deleted file mode')) {
+      currentFile.status = 'deleted';
+      continue;
+    }
+    if (line.startsWith('similarity index') || line.startsWith('rename from')) {
+      currentFile.status = 'renamed';
+      continue;
+    }
+
+    // Chunk header: @@ -oldStart,oldLines +newStart,newLines @@ optional header
+    if (line.startsWith('@@ ')) {
+      const chunkMatch = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/);
+      if (chunkMatch) {
+        const oldStart = parseInt(chunkMatch[1], 10);
+        const oldLines = chunkMatch[2] !== undefined ? parseInt(chunkMatch[2], 10) : 1;
+        const newStart = parseInt(chunkMatch[3], 10);
+        const newLines = chunkMatch[4] !== undefined ? parseInt(chunkMatch[4], 10) : 1;
+        const header = chunkMatch[5]?.trim() || '';
+
+        currentOld = oldStart;
+        currentNew = newStart;
+
+        currentChunk = {
+          header,
+          oldStart,
+          oldLines,
+          newStart,
+          newLines,
+          lines: [],
+        };
+        currentFile.chunks.push(currentChunk);
+      }
+      continue;
+    }
+
+    if (!currentChunk) continue;
+
+    // Diff line additions, deletions, context
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      currentFile.additions++;
+      currentChunk.lines.push({
+        type: 'add',
+        content: line.slice(1),
+        newLineNumber: currentNew++,
+      });
+    } else if (line.startsWith('-') && !line.startsWith('---')) {
+      currentFile.deletions++;
+      currentChunk.lines.push({
+        type: 'delete',
+        content: line.slice(1),
+        oldLineNumber: currentOld++,
+      });
+    } else if (line.startsWith(' ') || line === '') {
+      currentChunk.lines.push({
+        type: 'context',
+        content: line.startsWith(' ') ? line.slice(1) : line,
+        oldLineNumber: currentOld++,
+        newLineNumber: currentNew++,
+      });
+    }
+  }
+
+  const totalAdditions = files.reduce((acc, f) => acc + f.additions, 0);
+  const totalDeletions = files.reduce((acc, f) => acc + f.deletions, 0);
+
+  return {
+    rawDiff,
+    files,
+    totalAdditions,
+    totalDeletions,
+  };
 }
 
 export interface RemoteInfo {
