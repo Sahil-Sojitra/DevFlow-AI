@@ -28,6 +28,9 @@ import {
   X,
   Zap,
   Lightbulb,
+  GitMerge,
+  GitPullRequest,
+  Copy,
 } from 'lucide-react';
 import type {
   ExecutionSessionRecord,
@@ -189,6 +192,39 @@ export function ExecutionSessionsView({
   const [generatingPlan, setGeneratingPlan] = useState(false);
   const [directRunning, setDirectRunning] = useState(false);
   const [applyingRevision, setApplyingRevision] = useState(false);
+
+  // Phase 2: Merge and PR states
+  const [mergingSession, setMergingSession] = useState(false);
+  const [mergeError, setMergeError] = useState<string | null>(null);
+  const [mergeSuccess, setMergeSuccess] = useState<string | null>(null);
+  const [showPrModal, setShowPrModal] = useState(false);
+  const [prCopied, setPrCopied] = useState(false);
+
+  const handleMergeSession = async () => {
+    if (!selectedSessionId || mergingSession) return;
+    setMergingSession(true);
+    setMergeError(null);
+    setMergeSuccess(null);
+    try {
+      const res = await fetch(`/api/sessions/${selectedSessionId}/merge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMergeError(data.error || 'Failed to merge branch into base branch.');
+        return;
+      }
+      setMergeSuccess(`Successfully merged branch into ${data.session?.baseBranch || 'main'}!`);
+      await fetchSessionDetail(selectedSessionId);
+      await fetchSessions();
+    } catch (err: unknown) {
+      setMergeError((err as Error).message || 'Failed to merge branch.');
+    } finally {
+      setMergingSession(false);
+    }
+  };
   const [revisionPlanContent, setRevisionPlanContent] = useState('');
   const [revisionError, setRevisionError] = useState<string | null>(null);
 
@@ -1651,8 +1687,74 @@ export function ExecutionSessionsView({
                               }}
                             >
                               <Check size={16} />
-                              <span>{markingDone ? 'Marking Done...' : 'Done & Accept'}</span>
+                              <span>{markingDone ? 'Marking Done...' : 'Approve & Mark Done'}</span>
                             </button>
+                          )}
+
+                          {sessionDetail.isDone && sessionDetail.mergeStatus !== 'merged' && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <button
+                                onClick={handleMergeSession}
+                                disabled={mergingSession}
+                                style={{
+                                  padding: '0.55rem 1.15rem',
+                                  borderRadius: 'var(--radius-sm)',
+                                  border: 'none',
+                                  backgroundColor: 'var(--success)',
+                                  color: '#fff',
+                                  fontSize: '0.82rem',
+                                  fontWeight: 700,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.45rem',
+                                  cursor: mergingSession ? 'not-allowed' : 'pointer',
+                                  boxShadow: '0 0 14px rgba(34, 197, 94, 0.35)',
+                                }}
+                              >
+                                <GitMerge size={16} />
+                                <span>{mergingSession ? 'Merging...' : `1. Merge into ${sessionDetail.baseBranch || 'main'}`}</span>
+                              </button>
+
+                              <button
+                                onClick={() => setShowPrModal(true)}
+                                style={{
+                                  padding: '0.55rem 1.15rem',
+                                  borderRadius: 'var(--radius-sm)',
+                                  border: '1px solid var(--accent-primary)',
+                                  backgroundColor: 'rgba(56, 189, 248, 0.12)',
+                                  color: 'var(--accent-primary)',
+                                  fontSize: '0.82rem',
+                                  fontWeight: 600,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.45rem',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <GitPullRequest size={15} />
+                                <span>2. Create Pull Request (PR)</span>
+                              </button>
+                            </div>
+                          )}
+
+                          {sessionDetail.isDone && sessionDetail.mergeStatus === 'merged' && (
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.45rem',
+                                padding: '0.45rem 0.85rem',
+                                borderRadius: 'var(--radius-sm)',
+                                backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                                border: '1px solid var(--success)',
+                                color: '#86efac',
+                                fontSize: '0.8rem',
+                                fontWeight: 700,
+                              }}
+                            >
+                              <CheckCircle2 size={16} color="var(--success)" />
+                              <span>Merged into {sessionDetail.baseBranch || 'main'} ({sessionDetail.mergeCommitSha?.slice(0, 7) || 'HEAD'})</span>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -2285,6 +2387,193 @@ export function ExecutionSessionsView({
           </div>
         </div>
       )}
+      {/* Phase 2: Pull Request Staged Modal */}
+      {showPrModal && sessionDetail && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '1rem',
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '560px',
+              backgroundColor: 'var(--bg-secondary)',
+              border: '1px solid var(--border-default)',
+              borderRadius: 'var(--radius-lg)',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <div
+              style={{
+                padding: '1.25rem 1.5rem',
+                borderBottom: '1px solid var(--border-subtle)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: 'var(--bg-tertiary)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <div
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: 'var(--radius-sm)',
+                    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--accent-primary)',
+                  }}
+                >
+                  <GitPullRequest size={18} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '1rem', color: '#fff' }}>
+                    Create Pull Request (Option 2)
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    Staged Option — PR Automation will be connected in Phase 3
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowPrModal(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0.25rem' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div
+                style={{
+                  padding: '0.85rem 1rem',
+                  backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                  border: '1px solid rgba(56, 189, 248, 0.25)',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '0.82rem',
+                  color: 'var(--text-secondary)',
+                  lineHeight: 1.5,
+                }}
+              >
+                Direct Git Provider API integration (creating PRs on GitHub / GitLab) is staged for Phase 3. You can review and copy the pre-formatted PR details below.
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Branches:</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.84rem' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)' }}>{sessionDetail.ticketBranch || sessionDetail.branch}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>➔</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{sessionDetail.baseBranch || 'main'}</span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Proposed PR Title:</span>
+                <input
+                  type="text"
+                  readOnly
+                  value={`feat(${sessionDetail.issueIdentifier}): ${sessionDetail.issueTitle}`}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-default)',
+                    backgroundColor: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.82rem',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Summary of Changes:</span>
+                <textarea
+                  readOnly
+                  rows={4}
+                  value={`## Linear Issue ${sessionDetail.issueIdentifier} - ${sessionDetail.issueTitle}\n\n- Verified by DevFlow AI automated verification suite\n- Changed files: ${sessionDetail.changedFiles?.length ?? 0} files\n- Verification passed: ${sessionDetail.verificationPassed ? 'Yes' : 'No'}`}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-default)',
+                    backgroundColor: 'var(--bg-primary)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.8rem',
+                    fontFamily: 'var(--font-mono)',
+                    resize: 'none',
+                  }}
+                />
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: '1rem 1.5rem',
+                backgroundColor: 'var(--bg-tertiary)',
+                borderTop: '1px solid var(--border-subtle)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: '0.75rem',
+              }}
+            >
+              <button
+                onClick={() => setShowPrModal(false)}
+                style={{
+                  padding: '0.55rem 1rem',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border-default)',
+                  backgroundColor: 'transparent',
+                  color: 'var(--text-secondary)',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Close
+              </button>
+
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(`feat(${sessionDetail.issueIdentifier}): ${sessionDetail.issueTitle}\n\nLinear Issue: ${sessionDetail.issueIdentifier}`);
+                  setPrCopied(true);
+                  setTimeout(() => setPrCopied(false), 2000);
+                }}
+                style={{
+                  padding: '0.55rem 1.25rem',
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: 'var(--accent-primary)',
+                  color: '#fff',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                }}
+              >
+                <Copy size={14} />
+                <span>{prCopied ? 'Copied PR Info!' : 'Copy PR Details'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

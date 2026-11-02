@@ -20,7 +20,7 @@ import {
 import type { LinearIssue } from '@/types/linear';
 import type { RepositoryInfo } from '@/services/repo-registry';
 import type { SavedPlanSummary, SavedPlanDetail, ReviewStatus } from '@/services/plan-storage';
-import { ExecutionConfirmationModal } from './ExecutionConfirmationModal';
+import { ExecutionConfirmationModal, type ExecutionOptions } from './ExecutionConfirmationModal';
 
 interface PlanReviewViewProps {
   tickets: LinearIssue[];
@@ -230,7 +230,7 @@ export function PlanReviewView({
     }
   };
 
-  const handleAuthorizeExecution = async (useIsolation: boolean) => {
+  const handleAuthorizeExecution = async (options: ExecutionOptions) => {
     if (!planDetail) return;
     setStartingExecution(true);
     setGenError(null);
@@ -241,7 +241,10 @@ export function PlanReviewView({
         body: JSON.stringify({
           issueIdentifier: planDetail.issueIdentifier,
           repoPath: selectedRepoPath || planDetail.repository,
-          useIsolation,
+          useIsolation: options.useIsolation,
+          branchOption: options.branchOption,
+          customBranchName: options.customBranchName,
+          baseBranch: options.baseBranch,
         }),
       });
 

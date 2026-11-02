@@ -10,10 +10,19 @@ import {
   Play,
   X,
   Layers,
+  GitPullRequest,
+  ArrowDownToLine,
 } from 'lucide-react';
 import type { LinearIssue } from '@/types/linear';
 import type { RepositoryInfo } from '@/services/repo-registry';
 import type { SavedPlanDetail } from '@/services/plan-storage';
+
+export interface ExecutionOptions {
+  useIsolation: boolean;
+  branchOption: 'ticket' | 'custom' | 'current';
+  customBranchName?: string;
+  baseBranch: string;
+}
 
 interface ExecutionConfirmationModalProps {
   isOpen: boolean;
@@ -21,7 +30,7 @@ interface ExecutionConfirmationModalProps {
   plan: SavedPlanDetail | null;
   repository: RepositoryInfo | null;
   loading: boolean;
-  onConfirm: (useIsolation: boolean) => void;
+  onConfirm: (options: ExecutionOptions) => void;
   onClose: () => void;
 }
 
@@ -35,11 +44,29 @@ export function ExecutionConfirmationModal({
   onClose,
 }: ExecutionConfirmationModalProps) {
   const [useIsolation, setUseIsolation] = useState(true);
+  const [branchOption, setBranchOption] = useState<'ticket' | 'custom' | 'current'>('ticket');
+
+  const defaultTicketBranch = plan
+    ? `feat/${plan.issueIdentifier.toLowerCase()}`
+    : 'feat/ticket';
+  const [customBranchName, setCustomBranchName] = useState(defaultTicketBranch);
+
+  const defaultBaseBranch = repository?.branch === 'master' ? 'master' : 'main';
+  const [baseBranch, setBaseBranch] = useState(defaultBaseBranch);
 
   if (!isOpen || !plan) return null;
 
   const isDirty = repository?.hasUncommittedChanges ?? false;
   const uncommittedCount = repository?.uncommittedCount ?? 0;
+
+  const handleStart = () => {
+    onConfirm({
+      useIsolation,
+      branchOption,
+      customBranchName: branchOption === 'custom' ? customBranchName : undefined,
+      baseBranch,
+    });
+  };
 
   return (
     <div
@@ -58,12 +85,13 @@ export function ExecutionConfirmationModal({
       <div
         style={{
           width: '100%',
-          maxWidth: '560px',
+          maxWidth: '600px',
+          maxHeight: '90vh',
           backgroundColor: 'var(--bg-secondary)',
           border: '1px solid var(--border-default)',
           borderRadius: 'var(--radius-lg)',
           boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)',
-          overflow: 'hidden',
+          overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
         }}
@@ -96,10 +124,10 @@ export function ExecutionConfirmationModal({
             </div>
             <div>
               <div style={{ fontWeight: 600, fontSize: '1rem', color: '#fff' }}>
-                Authorize Implementation
+                Authorize Implementation & Branch Setup
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Milestone 4: Controlled Implementation & Verification
+                Phase 2: Automated Branch Creation & Controlled Execution
               </div>
             </div>
           </div>
@@ -120,7 +148,7 @@ export function ExecutionConfirmationModal({
         </div>
 
         {/* Body */}
-        <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+        <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
           {/* Target Issue & Plan */}
           <div
             style={{
@@ -147,29 +175,163 @@ export function ExecutionConfirmationModal({
             </div>
           </div>
 
-          {/* Repository & Working Tree State */}
+          {/* Base Branch & Pull Setting */}
           <div
             style={{
               padding: '0.85rem 1rem',
               backgroundColor: 'var(--bg-primary)',
               borderRadius: 'var(--radius-sm)',
               border: '1px solid var(--border-subtle)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
             }}
           >
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
-              Target Repository & Branch
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
-              <FolderGit2 size={15} color="var(--text-muted)" />
-              <span style={{ fontSize: '0.82rem', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
-                {repository?.path || plan.repository}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Base Branch to Pull From:
               </span>
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                {['main', 'master'].map((b) => (
+                  <button
+                    key={b}
+                    type="button"
+                    onClick={() => setBaseBranch(b)}
+                    style={{
+                      padding: '0.2rem 0.6rem',
+                      fontSize: '0.72rem',
+                      borderRadius: 'var(--radius-sm)',
+                      border: `1px solid ${baseBranch === b ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
+                      backgroundColor: baseBranch === b ? 'rgba(56, 189, 248, 0.15)' : 'var(--bg-secondary)',
+                      color: baseBranch === b ? 'var(--accent-primary)' : 'var(--text-muted)',
+                      cursor: 'pointer',
+                      fontWeight: baseBranch === b ? 600 : 400,
+                    }}
+                  >
+                    {b}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <GitBranch size={14} color="var(--text-muted)" />
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                Branch: <strong style={{ color: 'var(--text-primary)' }}>{repository?.branch || plan.branch}</strong>
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+              <ArrowDownToLine size={13} color="var(--accent-primary)" />
+              <span>DevFlow will fetch/pull the latest changes from <strong>{baseBranch}</strong> before creating the feature branch.</span>
+            </div>
+          </div>
+
+          {/* Feature Branch Naming Options */}
+          <div
+            style={{
+              padding: '0.85rem 1rem',
+              backgroundColor: 'var(--bg-primary)',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border-subtle)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.65rem',
+            }}
+          >
+            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <GitBranch size={14} color="var(--accent-primary)" />
+              <span>Ticket Branch Creation:</span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              {/* Option 1: Default per ticket */}
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.6rem',
+                  padding: '0.45rem 0.65rem',
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: branchOption === 'ticket' ? 'rgba(56, 189, 248, 0.08)' : 'transparent',
+                  border: `1px solid ${branchOption === 'ticket' ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="branchOption"
+                  value="ticket"
+                  checked={branchOption === 'ticket'}
+                  onChange={() => setBranchOption('ticket')}
+                />
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>
+                  Default per ticket: <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)' }}>{defaultTicketBranch}</strong>
+                </span>
+              </label>
+
+              {/* Option 2: Custom Branch Name */}
+              <label
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.4rem',
+                  padding: '0.45rem 0.65rem',
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: branchOption === 'custom' ? 'rgba(56, 189, 248, 0.08)' : 'transparent',
+                  border: `1px solid ${branchOption === 'custom' ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <input
+                    type="radio"
+                    name="branchOption"
+                    value="custom"
+                    checked={branchOption === 'custom'}
+                    onChange={() => setBranchOption('custom')}
+                  />
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>
+                    Custom branch name
+                  </span>
+                </div>
+                {branchOption === 'custom' && (
+                  <input
+                    type="text"
+                    value={customBranchName}
+                    onChange={(e) => setCustomBranchName(e.target.value)}
+                    placeholder="e.g. feature/user-authentication"
+                    style={{
+                      marginLeft: '1.6rem',
+                      padding: '0.35rem 0.6rem',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--border-default)',
+                      backgroundColor: 'var(--bg-secondary)',
+                      color: 'var(--text-primary)',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.8rem',
+                      outline: 'none',
+                    }}
+                  />
+                )}
+              </label>
+
+              {/* Option 3: Current Branch */}
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.6rem',
+                  padding: '0.45rem 0.65rem',
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: branchOption === 'current' ? 'rgba(56, 189, 248, 0.08)' : 'transparent',
+                  border: `1px solid ${branchOption === 'current' ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="radio"
+                  name="branchOption"
+                  value="current"
+                  checked={branchOption === 'current'}
+                  onChange={() => setBranchOption('current')}
+                />
+                <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                  Use current active branch (<strong style={{ color: 'var(--text-primary)' }}>{repository?.branch || plan.branch}</strong>)
+                </span>
+              </label>
             </div>
           </div>
 
@@ -210,7 +372,7 @@ export function ExecutionConfirmationModal({
               }}
             >
               <CheckCircle2 size={16} color="var(--success)" />
-              <span>Working tree is clean. Ready for implementation.</span>
+              <span>Working tree is clean. Ready for branch setup & implementation.</span>
             </div>
           )}
 
@@ -262,7 +424,7 @@ export function ExecutionConfirmationModal({
           >
             <ShieldAlert size={15} color="var(--text-muted)" />
             <span>
-              DevFlow AI will <strong>never</strong> automatically commit, push, merge, or deploy. You remain in full control.
+              DevFlow AI creates your ticket branch safely. You choose whether to merge into <strong>{baseBranch}</strong> or create a PR after review.
             </span>
           </div>
         </div>
@@ -297,7 +459,7 @@ export function ExecutionConfirmationModal({
           </button>
 
           <button
-            onClick={() => onConfirm(useIsolation)}
+            onClick={handleStart}
             disabled={loading}
             style={{
               padding: '0.55rem 1.35rem',
@@ -316,7 +478,7 @@ export function ExecutionConfirmationModal({
             }}
           >
             <Play size={15} fill="#fff" />
-            <span>{loading ? 'Starting Execution...' : 'Authorize & Start Implementation'}</span>
+            <span>{loading ? 'Setting up branch & starting...' : 'Authorize & Start Implementation'}</span>
           </button>
         </div>
       </div>

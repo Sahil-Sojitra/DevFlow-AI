@@ -360,4 +360,130 @@ Step 1: Create auth middleware.
     expect(finalSession?.diagnostics?.[0].file).toBe('src/app.ts');
     expect(finalSession?.diagnostics?.[0].code).toBe('TS2304');
   });
+  it('creates ticket branch and preserves baseBranch on execution session', async () => {
+    setupPlan('SAH-BRANCH', 'approved');
+
+    const mockAntigravity = new AntigravityAdapter(mockConfig);
+    vi.spyOn(mockAntigravity, 'executePrompt').mockResolvedValue({
+      success: true,
+      exitCode: 0,
+      signal: null,
+      stdout: '{"status":"SUCCESS"}',
+      stderr: '',
+      durationMs: 400,
+      timedOut: false,
+    });
+
+    const mockVerification = new VerificationService();
+    vi.spyOn(mockVerification, 'runAllChecks').mockResolvedValue([]);
+
+    const storage = new ExecutionStorageService(mockConfig, sessionsDir);
+    const executor = new ImplementationExecutor({
+      config: mockConfig,
+      antigravityAdapter: mockAntigravity,
+      repoRegistry: new RepositoryRegistry(mockConfig),
+      planStorage: new PlanStorageService(mockConfig),
+      executionStorage: storage,
+      verificationService: mockVerification,
+    });
+
+    const session = await executor.startExecutionSession({
+      issueIdentifier: 'SAH-BRANCH',
+      useIsolation: false,
+      branchOption: 'custom',
+      customBranchName: 'feature/sah-login-flow',
+      baseBranch: 'main',
+    });
+
+    expect(session.ticketBranch).toBe('feature/sah-login-flow');
+    expect(session.baseBranch).toBe('main');
+    expect(session.mergeStatus).toBe('not_merged');
+  });
+
+  it('merges completed session branch into base branch successfully', async () => {
+    setupPlan('SAH-MERGE', 'approved');
+
+    vi.spyOn(gitOps, 'mergeBranch').mockReturnValue({
+      success: true,
+      commitSha: 'commit_merged_789',
+    });
+
+    const storage = new ExecutionStorageService(mockConfig, sessionsDir);
+    const executor = new ImplementationExecutor({
+      config: mockConfig,
+      repoRegistry: new RepositoryRegistry(mockConfig),
+      planStorage: new PlanStorageService(mockConfig),
+      executionStorage: storage,
+    });
+
+    // Create session in completed state
+    const completedSession = storage.saveSession({
+      id: 'sess_merge_test',
+      issueIdentifier: 'SAH-MERGE',
+      issueTitle: 'Implement Auth Flow',
+      planFilePath: 'plans/SAH-MERGE.md',
+      repositoryPath: allowedRepo,
+      workingPath: allowedRepo,
+      isIsolated: false,
+      branch: 'main',
+      ticketBranch: 'feat/sah-merge',
+      baseBranch: 'main',
+      mergeStatus: 'not_merged',
+      baselineCommit: 'abc123456',
+      baselineDirtyCount: 0,
+      baselineFiles: [],
+      createdAt: new Date().toISOString(),
+      status: 'completed',
+      progressMessage: 'Completed',
+      logs: [],
+      changedFiles: [],
+      verificationResults: [],
+      implementationCompleted: true,
+      verificationPassed: true,
+      isDone: true,
+    });
+
+    const merged = executor.mergeSession('sess_merge_test');
+    expect(merged.mergeStatus).toBe('merged');
+    expect(merged.mergeCommitSha).toBe('commit_merged_789');
+    expect(merged.mergedAt).toBeDefined();
+  });
+
+  it('rejects merge when session is not completed', async () => {
+    const storage = new ExecutionStorageService(mockConfig, sessionsDir);
+    const executor = new ImplementationExecutor({
+      config: mockConfig,
+      repoRegistry: new RepositoryRegistry(mockConfig),
+      planStorage: new PlanStorageService(mockConfig),
+      executionStorage: storage,
+    });
+
+    storage.saveSession({
+      id: 'sess_running_test',
+      issueIdentifier: 'SAH-RUNNING',
+      issueTitle: 'Running',
+      planFilePath: 'plans/SAH-RUNNING.md',
+      repositoryPath: allowedRepo,
+      workingPath: allowedRepo,
+      isIsolated: false,
+      branch: 'main',
+      ticketBranch: 'feat/sah-running',
+      baseBranch: 'main',
+      baselineCommit: 'abc123456',
+      baselineDirtyCount: 0,
+      baselineFiles: [],
+      createdAt: new Date().toISOString(),
+      status: 'running',
+      progressMessage: 'Running',
+      logs: [],
+      changedFiles: [],
+      verificationResults: [],
+      implementationCompleted: false,
+      verificationPassed: false,
+    });
+
+    expect(() => executor.mergeSession('sess_running_test')).toThrow(
+      'Only completed execution sessions can be merged'
+    );
+  });
 });

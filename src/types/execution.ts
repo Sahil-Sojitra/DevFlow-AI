@@ -85,6 +85,11 @@ export interface ExecutionSessionRecord {
   isIsolated: boolean;
   worktreePath?: string;
   branch: string;
+  ticketBranch?: string;
+  baseBranch?: string;
+  mergeStatus?: 'not_merged' | 'merged' | 'merge_failed';
+  mergedAt?: string;
+  mergeCommitSha?: string;
   baselineCommit: string;
   baselineDirtyCount: number;
   baselineFiles: string[];
@@ -119,6 +124,11 @@ export interface ExecutionSessionSummary {
   issueTitle: string;
   repositoryPath: string;
   branch: string;
+  ticketBranch?: string;
+  baseBranch?: string;
+  mergeStatus?: 'not_merged' | 'merged' | 'merge_failed';
+  mergedAt?: string;
+  mergeCommitSha?: string;
   isIsolated: boolean;
   createdAt: string;
   startedAt?: string;
@@ -147,6 +157,9 @@ export const CreateExecutionRequestSchema = z.object({
     .regex(/^[a-zA-Z0-9_-]+$/, 'issueIdentifier must be alphanumeric with dashes or underscores'),
   repoPath: z.string().optional(),
   useIsolation: z.boolean().optional(),
+  branchOption: z.enum(['ticket', 'custom', 'current']).optional(),
+  customBranchName: z.string().optional(),
+  baseBranch: z.string().optional(),
 });
 
 export type CreateExecutionRequest = z.infer<typeof CreateExecutionRequestSchema>;
@@ -172,3 +185,9 @@ export const MarkDoneSchema = z.object({
   note: z.string().max(1000).optional(),
 });
 export type MarkDoneInput = z.infer<typeof MarkDoneSchema>;
+
+export const MergeSessionSchema = z.object({
+  targetBranch: z.string().optional(),
+  commitMessage: z.string().optional(),
+});
+export type MergeSessionInput = z.infer<typeof MergeSessionSchema>;

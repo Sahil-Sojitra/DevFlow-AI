@@ -115,6 +115,89 @@ export function inspectGitWorkingTree(cwd: string): GitWorkingTreeStatus {
 }
 
 /**
+ * Detects the repository's primary base branch ('main' or 'master' or fallback to current).
+ */
+export function detectBaseBranch(repoDir: string): string {
+  try {
+    const branches = runGit(['branch', '--list', 'main', 'master'], repoDir);
+    if (branches.includes('main')) return 'main';
+    if (branches.includes('master')) return 'master';
+
+    // Try remote HEAD
+    try {
+      const remoteHead = runGit(['symbolic-ref', 'refs/remotes/origin/HEAD'], repoDir);
+      const match = remoteHead.match(/refs\/remotes\/origin\/(.+)$/);
+      if (match && match[1]) return match[1];
+    } catch {
+      // Ignore
+    }
+
+    const current = runGit(['branch', '--show-current'], repoDir);
+    return current || 'main';
+  } catch {
+    return 'main';
+  }
+}
+
+/**
+ * Sanitizes a branch name to be compliant with Git branch naming rules.
+ */
+export function sanitizeBranchName(name: string): string {
+  return name
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9_\-\./]/g, '')
+    .replace(/\/+/g, '/')
+    .replace(/^\/|\/$/g, '');
+}
+
+/**
+ * Generates standard ticket branch name (e.g., feat/sah-6).
+ */
+export function generateTicketBranchName(issueIdentifier: string, prefix = 'feat'): string {
+  const cleanId = sanitizeBranchName(issueIdentifier.toLowerCase());
+  return `${prefix}/${cleanId}`;
+}
+
+/**
+ * Attempts to pull or fetch the base branch from the remote if configured.
+ * Does not fail if offline or remote is absent.
+ */
+export function pullBaseBranch(repoDir: string, baseBranch: string): { success: boolean; message: string } {
+  try {
+    const remotes = runGit(['remote'], repoDir);
+    if (!remotes || remotes.trim().length === 0) {
+      return { success: true, message: `No remote configured. Using local branch "${baseBranch}".` };
+    }
+
+    // Check current branch
+    const currentBranch = runGit(['branch', '--show-current'], repoDir);
+    if (currentBranch === baseBranch) {
+      // Check if working tree clean
+      const status = inspectGitWorkingTree(repoDir);
+      if (status.isClean) {
+        try {
+          runGit(['pull', 'origin', baseBranch], repoDir, 20000);
+          return { success: true, message: `Successfully pulled latest changes for "${baseBranch}" from origin.` };
+        } catch (pullErr: unknown) {
+          return { success: false, message: `Failed to pull from origin: ${(pullErr as Error).message}. Using local "${baseBranch}".` };
+        }
+      }
+    }
+
+    // If on a different branch or dirty, fetch origin without changing working tree
+    try {
+      runGit(['fetch', 'origin', baseBranch], repoDir, 20000);
+      return { success: true, message: `Fetched latest refs for "${baseBranch}" from origin.` };
+    } catch {
+      return { success: true, message: `Remote fetch unreachable. Using local branch "${baseBranch}".` };
+    }
+  } catch {
+    return { success: true, message: `Using local branch "${baseBranch}".` };
+  }
+}
+
+/**
  * Creates an isolated git worktree for implementation to safely protect the main working tree.
  */
 export function createGitWorktree(
@@ -135,6 +218,110 @@ export function createGitWorktree(
 
   runGit(['worktree', 'add', '--detach', resolvedWorktree, baseCommitOrBranch], repoDir);
   return resolvedWorktree;
+}
+
+/**
+ * Creates an isolated git worktree attached to a specific feature/ticket branch.
+ */
+export function createGitWorktreeWithBranch(
+  repoDir: string,
+  worktreeDir: string,
+  branchName: string,
+  baseBranch = 'main'
+): string {
+  const resolvedWorktree = path.resolve(worktreeDir);
+
+  if (fs.existsSync(resolvedWorktree)) {
+    throw new Error(`Target worktree directory already exists: ${resolvedWorktree}`);
+  }
+
+  const parentDir = path.dirname(resolvedWorktree);
+  if (!fs.existsSync(parentDir)) {
+    fs.mkdirSync(parentDir, { recursive: true });
+  }
+
+  // Check if branch already exists
+  let branchExists = false;
+  try {
+    runGit(['rev-parse', '--verify', `refs/heads/${branchName}`], repoDir);
+    branchExists = true;
+  } catch {
+    branchExists = false;
+  }
+
+  if (branchExists) {
+    runGit(['worktree', 'add', resolvedWorktree, branchName], repoDir);
+  } else {
+    runGit(['worktree', 'add', '-b', branchName, resolvedWorktree, baseBranch], repoDir);
+  }
+
+  return resolvedWorktree;
+}
+
+/**
+ * Commits all working tree or worktree changes with a descriptive message.
+ */
+export function commitWorktreeChanges(worktreeDir: string, commitMessage: string): string | null {
+  try {
+    const status = inspectGitWorkingTree(worktreeDir);
+    if (status.isClean) {
+      return null;
+    }
+
+    runGit(['add', '-A'], worktreeDir);
+    runGit(['commit', '-m', commitMessage], worktreeDir);
+    const headCommit = runGit(['rev-parse', 'HEAD'], worktreeDir);
+    return headCommit || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Merges a feature/ticket branch into the target base branch (e.g. main/master).
+ */
+export function mergeBranch(
+  repoDir: string,
+  sourceBranch: string,
+  targetBranch: string,
+  commitMessage?: string
+): { success: boolean; commitSha?: string; error?: string } {
+  try {
+    const status = inspectGitWorkingTree(repoDir);
+    if (!status.isClean) {
+      return {
+        success: false,
+        error: `Cannot merge into "${targetBranch}": main working tree has ${status.allUncommitted.length} uncommitted changes. Stash or commit them first.`,
+      };
+    }
+
+    // Switch to target branch if not already on it
+    if (status.branch !== targetBranch) {
+      runGit(['checkout', targetBranch], repoDir);
+    }
+
+    const defaultMsg = `Merge branch '${sourceBranch}' into ${targetBranch}`;
+    const msg = commitMessage || defaultMsg;
+
+    runGit(['merge', sourceBranch, '-m', msg], repoDir);
+    const commitSha = runGit(['rev-parse', 'HEAD'], repoDir);
+
+    return {
+      success: true,
+      commitSha,
+    };
+  } catch (err: unknown) {
+    // Attempt abort in case of merge conflict
+    try {
+      runGit(['merge', '--abort'], repoDir);
+    } catch {
+      // Ignore
+    }
+    return {
+      success: false,
+      error: `Failed to merge "${sourceBranch}" into "${targetBranch}": ${(err as Error).message}`,
+    };
+  }
 }
 
 /**

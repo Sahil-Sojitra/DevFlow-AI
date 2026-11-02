@@ -9,6 +9,13 @@ import { extractDiagnostics, formatSelfHealingPrompt } from './diagnostics.js';
 import {
   inspectGitWorkingTree,
   createGitWorktree,
+  createGitWorktreeWithBranch,
+  detectBaseBranch,
+  generateTicketBranchName,
+  sanitizeBranchName,
+  pullBaseBranch,
+  commitWorktreeChanges,
+  mergeBranch,
   detectChangedFiles,
   getUnifiedDiff,
 } from './git-ops.js';
@@ -99,10 +106,29 @@ export class ImplementationExecutor {
   public async startExecutionSession(
     params: CreateExecutionRequest
   ): Promise<ExecutionSessionRecord> {
-    const { issueIdentifier, useIsolation = true } = params;
+    const { issueIdentifier, useIsolation = true, branchOption, customBranchName } = params;
 
     // 1. Pre-flight verification
     const { planDetail, targetRepo, gitStatus } = this.validateExecutionEligibility(params);
+
+    // Determine Base Branch and pull latest changes
+    const baseBranch = params.baseBranch || detectBaseBranch(targetRepo);
+    let pullInfo = { success: true, message: `Using base branch "${baseBranch}".` };
+    try {
+      pullInfo = pullBaseBranch(targetRepo, baseBranch);
+    } catch {
+      // Graceful fallback if git pull fails or offline
+    }
+
+    // Determine Ticket Feature Branch
+    let ticketBranch: string;
+    if (branchOption === 'custom' && customBranchName && customBranchName.trim().length > 0) {
+      ticketBranch = sanitizeBranchName(customBranchName);
+    } else if (branchOption === 'current') {
+      ticketBranch = gitStatus.branch;
+    } else {
+      ticketBranch = generateTicketBranchName(issueIdentifier);
+    }
 
     const sessionId = this.generateSessionId(issueIdentifier);
 
@@ -124,7 +150,7 @@ export class ImplementationExecutor {
       if (useIsolation) {
         try {
           const worktreeDir = path.join(targetRepo, '.devflow', 'worktrees', sessionId);
-          workingPath = createGitWorktree(targetRepo, worktreeDir, 'HEAD');
+          workingPath = createGitWorktreeWithBranch(targetRepo, worktreeDir, ticketBranch, baseBranch);
           isIsolated = true;
           worktreePath = workingPath;
         } catch (worktreeErr: unknown) {
@@ -172,7 +198,7 @@ export class ImplementationExecutor {
       // Working tree is clean, but isolation was requested
       try {
         const worktreeDir = path.join(targetRepo, '.devflow', 'worktrees', sessionId);
-        workingPath = createGitWorktree(targetRepo, worktreeDir, 'HEAD');
+        workingPath = createGitWorktreeWithBranch(targetRepo, worktreeDir, ticketBranch, baseBranch);
         isIsolated = true;
         worktreePath = workingPath;
       } catch {
@@ -198,19 +224,22 @@ export class ImplementationExecutor {
       isIsolated,
       worktreePath,
       branch: gitStatus.branch,
+      ticketBranch,
+      baseBranch,
+      mergeStatus: 'not_merged',
       baselineCommit,
       baselineDirtyCount: baselineFiles.length,
       baselineFiles,
       createdAt: new Date().toISOString(),
       status: 'queued',
       progressMessage: isIsolated
-        ? `Queued in isolated worktree (${path.relative(targetRepo, workingPath).replace(/\\/g, '/')})`
-        : 'Queued in main repository working tree',
+        ? `Queued in isolated worktree on branch "${ticketBranch}" (base: ${baseBranch})`
+        : `Queued in main repository working tree on branch "${ticketBranch}"`,
       logs: [
         {
           timestamp: new Date().toISOString(),
           level: 'info',
-          message: `Session initialized for ${issueIdentifier} on branch ${gitStatus.branch}. Isolation: ${isIsolated ? 'active' : 'inactive'}.`,
+          message: `Session initialized for ${issueIdentifier}. Base branch: "${baseBranch}" (${pullInfo.message}). Ticket branch: "${ticketBranch}". Isolation: ${isIsolated ? 'active' : 'inactive'}.`,
         },
       ],
       changedFiles: [],
@@ -515,6 +544,23 @@ ${planContent}
           error: 'Agent completed without producing any file modifications.',
         });
       } else if (allPassed) {
+        // Auto-commit verified implementation changes in ticket worktree branch
+        try {
+          const commitSha = commitWorktreeChanges(
+            session.workingPath,
+            `feat(${session.issueIdentifier}): implement approved plan for ${session.issueTitle}`
+          );
+          if (commitSha) {
+            this.executionStorage.appendLog(
+              sessionId,
+              'info',
+              `✓ Committed verified changes to branch "${session.ticketBranch || session.branch}" (Commit: ${commitSha.slice(0, 7)}).`
+            );
+          }
+        } catch {
+          // Commit failure does not block session completion
+        }
+
         this.finishSession(sessionId, 'completed', {
           implementationCompleted: true,
           verificationPassed: true,
@@ -794,6 +840,85 @@ ${feedback}
       sessionId,
       'info',
       `Developer accepted implementation changes and marked session as Done.${note ? ` Note: ${note}` : ''}`
+    );
+
+    return updated!;
+  }
+  /**
+   * Merges an approved, completed execution session's branch into the base branch (e.g. main/master).
+   */
+  public mergeSession(
+    sessionId: string,
+    options: { targetBranch?: string; commitMessage?: string } = {}
+  ): ExecutionSessionRecord {
+    const session = this.executionStorage.getSession(sessionId);
+    if (!session) {
+      throw new Error(`Session "${sessionId}" not found.`);
+    }
+
+    if (session.status !== 'completed') {
+      throw new Error(
+        `Only completed execution sessions can be merged. Current status: "${session.status}".`
+      );
+    }
+
+    const sourceBranch = session.ticketBranch || session.branch;
+    const targetBranch = options.targetBranch || session.baseBranch || detectBaseBranch(session.repositoryPath);
+
+    if (sourceBranch === targetBranch) {
+      throw new Error(`Source branch and target branch are identical ("${targetBranch}"). Nothing to merge.`);
+    }
+
+    // Ensure all changes in worktree are committed before merging
+    try {
+      commitWorktreeChanges(
+        session.workingPath,
+        `feat(${session.issueIdentifier}): implement approved plan for ${session.issueTitle}`
+      );
+    } catch {
+      // Ignore
+    }
+
+    const commitMessage =
+      options.commitMessage ||
+      `feat(${session.issueIdentifier}): merge '${sourceBranch}' into ${targetBranch}`;
+
+    this.executionStorage.appendLog(
+      sessionId,
+      'info',
+      `Merging ticket branch "${sourceBranch}" into target branch "${targetBranch}"...`
+    );
+
+    const mergeResult = mergeBranch(
+      session.repositoryPath,
+      sourceBranch,
+      targetBranch,
+      commitMessage
+    );
+
+    if (!mergeResult.success) {
+      this.executionStorage.updateSession(sessionId, {
+        mergeStatus: 'merge_failed',
+      });
+      this.executionStorage.appendLog(
+        sessionId,
+        'error',
+        `Merge into "${targetBranch}" failed: ${mergeResult.error}`
+      );
+      throw new Error(mergeResult.error || `Failed to merge branch into "${targetBranch}".`);
+    }
+
+    const updated = this.executionStorage.updateSession(sessionId, {
+      mergeStatus: 'merged',
+      mergedAt: new Date().toISOString(),
+      mergeCommitSha: mergeResult.commitSha,
+      progressMessage: `Branch "${sourceBranch}" successfully merged into "${targetBranch}" (${mergeResult.commitSha?.slice(0, 7)}).`,
+    });
+
+    this.executionStorage.appendLog(
+      sessionId,
+      'info',
+      `✓ Successfully merged branch "${sourceBranch}" into "${targetBranch}" (Commit: ${mergeResult.commitSha}).`
     );
 
     return updated!;
