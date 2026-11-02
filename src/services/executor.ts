@@ -5,6 +5,7 @@ import { RepositoryRegistry } from './repo-registry.js';
 import { PlanStorageService } from './plan-storage.js';
 import { ExecutionStorageService } from './execution-storage.js';
 import { VerificationService } from './verification.js';
+import { extractDiagnostics, formatSelfHealingPrompt } from './diagnostics.js';
 import {
   inspectGitWorkingTree,
   createGitWorktree,
@@ -16,6 +17,7 @@ import type {
   CreateExecutionRequest,
   SessionRevision,
   VerificationResult,
+  DiagnosticIssue,
 } from '../types/execution.js';
 
 export interface ExecutorDependencies {
@@ -402,6 +404,8 @@ ${planContent}
       let verificationResults: VerificationResult[] = [];
       let configuredChecks: VerificationResult[] = [];
       let failedChecks: VerificationResult[] = [];
+      let previousIssuesCount: number | undefined;
+      let latestDiagnostics: DiagnosticIssue[] = [];
 
       while (autoFixAttempt <= MAX_AUTO_FIX_ATTEMPTS) {
         this.executionStorage.appendLog(
@@ -434,6 +438,14 @@ ${planContent}
           }
         }
 
+        // Extract pinpoint diagnostics from verification results
+        const diagnosticReport = extractDiagnostics(verificationResults);
+        latestDiagnostics = diagnosticReport.issues;
+
+        session = this.executionStorage.updateSession(sessionId, {
+          diagnostics: latestDiagnostics,
+        })!;
+
         // If all verification checks passed, break out of loop!
         if (allPassed) {
           break;
@@ -446,33 +458,25 @@ ${planContent}
           this.executionStorage.appendLog(
             sessionId,
             'warn',
-            `Verification check(s) failed (${failedChecks.map((c) => c.name).join(', ')}). Initiating autonomous self-healing fix pass (${autoFixAttempt} of ${MAX_AUTO_FIX_ATTEMPTS})...`
+            `Verification check(s) failed (${failedChecks.map((c) => c.name).join(', ')}). ${diagnosticReport.summary} Initiating autonomous self-healing fix pass (${autoFixAttempt} of ${MAX_AUTO_FIX_ATTEMPTS})...`
           );
 
           session = this.executionStorage.updateSession(sessionId, {
-            autoFixAttempts: autoFixAttempt,
+            autoFixAttempts: Math.min(autoFixAttempt, MAX_AUTO_FIX_ATTEMPTS),
             maxAutoFixAttempts: MAX_AUTO_FIX_ATTEMPTS,
-            progressMessage: `Autonomous self-healing in progress (Attempt ${autoFixAttempt} of ${MAX_AUTO_FIX_ATTEMPTS}): Fixing ${failedChecks.map((c) => c.name).join(', ')}...`,
+            progressMessage: `Autonomous self-healing in progress (Attempt ${autoFixAttempt} of ${MAX_AUTO_FIX_ATTEMPTS}): Fixing ${diagnosticReport.totalErrors} issue(s) across ${diagnosticReport.affectedFiles.length} file(s)...`,
           })!;
 
-          const failureDetails = failedChecks
-            .map((c) => `### [${c.name.toUpperCase()}] Failure Output:\n${c.output || c.error || 'Check failed with non-zero exit code'}`)
-            .join('\n\n');
+          const autoFixPrompt = formatSelfHealingPrompt({
+            report: diagnosticReport,
+            issueIdentifier: session.issueIdentifier,
+            issueTitle: session.issueTitle,
+            attempt: autoFixAttempt,
+            maxAttempts: MAX_AUTO_FIX_ATTEMPTS,
+            previousIssuesCount,
+          });
 
-          const autoFixPrompt = `
-You are an expert software developer resolving automated verification failures for Linear issue ${session.issueIdentifier} ("${session.issueTitle}").
-This is Autonomous Self-Healing Attempt ${autoFixAttempt} of ${MAX_AUTO_FIX_ATTEMPTS}.
-
-## VERIFICATION CHECK FAILURES & ERROR OUTPUT
-${failureDetails}
-
-## INSTRUCTIONS:
-1. Carefully inspect the failed test, compiler, or lint error logs above.
-2. If unit or integration test assertions failed, check whether the implementation has a bug or if test assertions need updating to accurately reflect requirements, and update the files.
-3. If TypeScript typecheck, ESLint, or build failed, correct all type definitions, missing module imports, and syntax issues.
-4. Directly create or edit code files on disk. (CRITICAL: Do NOT attempt to run terminal or shell commands).
-5. Ensure the repository compiles cleanly and all test cases pass.
-`.trim();
+          previousIssuesCount = diagnosticReport.totalErrors;
 
           const fixResult = await this.antigravity.executePrompt({
             workingDir: session.workingPath,
@@ -502,8 +506,9 @@ ${failureDetails}
           implementationCompleted: false,
           verificationPassed: false,
           verificationResults,
+          diagnostics: latestDiagnostics,
           changedFiles: [],
-          autoFixAttempts: autoFixAttempt,
+          autoFixAttempts: Math.min(autoFixAttempt, MAX_AUTO_FIX_ATTEMPTS),
           maxAutoFixAttempts: MAX_AUTO_FIX_ATTEMPTS,
           progressMessage: 'No file changes produced by agent.',
           summary: 'Agent process completed, but 0 files were created or modified on disk. Verify that the approved plan contains actionable code steps.',
@@ -514,8 +519,9 @@ ${failureDetails}
           implementationCompleted: true,
           verificationPassed: true,
           verificationResults,
+          diagnostics: latestDiagnostics,
           changedFiles: detectedChanges,
-          autoFixAttempts: autoFixAttempt,
+          autoFixAttempts: Math.min(autoFixAttempt, MAX_AUTO_FIX_ATTEMPTS),
           maxAutoFixAttempts: MAX_AUTO_FIX_ATTEMPTS,
           stuckInHallucination: false,
           progressMessage: autoFixAttempt > 0
@@ -537,8 +543,9 @@ ${failureDetails}
           implementationCompleted: true,
           verificationPassed: false,
           verificationResults,
+          diagnostics: latestDiagnostics,
           changedFiles: detectedChanges,
-          autoFixAttempts: autoFixAttempt,
+          autoFixAttempts: Math.min(autoFixAttempt, MAX_AUTO_FIX_ATTEMPTS),
           maxAutoFixAttempts: MAX_AUTO_FIX_ATTEMPTS,
           stuckInHallucination: true,
           progressMessage: `Agent unable to resolve verification errors after ${MAX_AUTO_FIX_ATTEMPTS} autonomous attempts (Stuck / Hallucination detected). Developer guidance required.`,

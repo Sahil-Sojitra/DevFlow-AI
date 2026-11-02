@@ -42,6 +42,18 @@ export interface VerificationResult {
   error?: string;
 }
 
+export interface DiagnosticIssue {
+  check: VerificationCheckName | 'agent';
+  file?: string;
+  line?: number;
+  column?: number;
+  code?: string;
+  message: string;
+  expected?: string;
+  actual?: string;
+  snippet?: string;
+}
+
 export interface ChangedFile {
   path: string;
   status: 'added' | 'modified' | 'deleted' | 'renamed';
@@ -84,6 +96,7 @@ export interface ExecutionSessionRecord {
   logs: SessionLogEntry[];
   changedFiles: ChangedFile[];
   verificationResults: VerificationResult[];
+  diagnostics?: DiagnosticIssue[];
   implementationCompleted: boolean;
   verificationPassed: boolean;
   exitCode?: number | null;
@@ -114,9 +127,11 @@ export interface ExecutionSessionSummary {
   progressMessage: string;
   changedFilesCount: number;
   verificationPassed: boolean;
+  diagnostics?: DiagnosticIssue[];
   error?: string;
   isDone?: boolean;
   doneAt?: string;
+  doneNote?: string;
   revisionCount?: number;
   autoFixAttempts?: number;
   stuckInHallucination?: boolean;

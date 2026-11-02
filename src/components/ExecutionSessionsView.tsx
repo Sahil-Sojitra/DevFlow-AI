@@ -50,7 +50,34 @@ export interface ErrorDiagnostic {
 export function analyzeSessionErrors(session: ExecutionSessionRecord): ErrorDiagnostic[] {
   const diagnostics: ErrorDiagnostic[] = [];
 
-  // 1. Analyze failed verification checks
+  // 1. Prioritize structured pinpoint diagnostics if present
+  if (session.diagnostics && session.diagnostics.length > 0) {
+    for (const issue of session.diagnostics) {
+      const fileLoc = issue.file
+        ? `${issue.file}${issue.line ? `:${issue.line}${issue.column ? `:${issue.column}` : ''}` : ''}`
+        : 'Repository';
+      const codeTag = issue.code ? `[${issue.code}] ` : '';
+      const suggestions: ErrorDiagnostic['suggestions'] = [];
+      const baseName = issue.file ? issue.file.split(/[/\\]/).pop() : issue.check;
+
+      suggestions.push({
+        label: `Targeted Auto-Fix: ${baseName}`,
+        description: `Direct Antigravity to fix ${codeTag || 'issue'} in ${fileLoc}.`,
+        promptText: `Fix the ${issue.check} issue at ${fileLoc}: ${codeTag}${issue.message}. Ensure the file compiles cleanly and all test cases pass.`,
+      });
+
+      diagnostics.push({
+        title: `${issue.check.toUpperCase()} - ${codeTag}${fileLoc}`,
+        source: issue.file || issue.check,
+        rawError: `${codeTag}${issue.message}${issue.expected && issue.actual ? `\n- Expected: ${issue.expected}\n- Received: ${issue.actual}` : ''}`,
+        suggestions,
+      });
+    }
+
+    return diagnostics;
+  }
+
+  // 2. Analyze failed verification checks (fallback)
   const failedChecks = (session.verificationResults || []).filter((c) => c.status === 'failed');
   for (const check of failedChecks) {
     const raw = (check.error || check.output || '').trim();

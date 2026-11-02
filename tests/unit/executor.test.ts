@@ -45,6 +45,10 @@ describe('ImplementationExecutor', () => {
       untracked: [],
       allUncommitted: [],
     });
+
+    vi.spyOn(gitOps, 'detectChangedFiles').mockReturnValue([
+      { path: 'src/app.ts', status: 'modified', isPreExisting: false },
+    ]);
   });
 
   afterEach(() => {
@@ -223,7 +227,7 @@ Step 1: Create auth middleware.
     expect(session.status).toBe('queued');
 
     // Wait briefly for background pipeline to complete
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 150));
 
     const finalSession = storage.getSession(session.id);
     expect(finalSession).toBeDefined();
@@ -231,5 +235,129 @@ Step 1: Create auth middleware.
     expect(finalSession?.implementationCompleted).toBe(true);
     expect(finalSession?.verificationPassed).toBe(true);
     expect(finalSession?.verificationResults.length).toBe(2);
+  });
+
+  it('autonomously recovers from verification failure via pinpoint self-healing loop', async () => {
+    setupPlan('SAH-AUTOFIX', 'approved');
+
+    const mockAntigravity = new AntigravityAdapter(mockConfig);
+    const promptSpy = vi.spyOn(mockAntigravity, 'executePrompt').mockResolvedValue({
+      success: true,
+      exitCode: 0,
+      signal: null,
+      stdout: '{"status":"SUCCESS"}',
+      stderr: '',
+      durationMs: 800,
+      timedOut: false,
+    });
+
+    const mockVerification = new VerificationService();
+    // First verification call fails, second call passes after self-healing
+    vi.spyOn(mockVerification, 'runAllChecks')
+      .mockResolvedValueOnce([
+        {
+          name: 'typecheck',
+          command: 'npm run typecheck',
+          status: 'failed',
+          durationMs: 300,
+          output: "src/app.ts:10:5 - error TS2304: Cannot find name 'Config'.",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          name: 'typecheck',
+          command: 'npm run typecheck',
+          status: 'passed',
+          durationMs: 300,
+          output: 'Found 0 errors.',
+        },
+      ]);
+
+    const storage = new ExecutionStorageService(mockConfig, sessionsDir);
+    const executor = new ImplementationExecutor({
+      config: mockConfig,
+      antigravityAdapter: mockAntigravity,
+      repoRegistry: new RepositoryRegistry(mockConfig),
+      planStorage: new PlanStorageService(mockConfig),
+      executionStorage: storage,
+      verificationService: mockVerification,
+    });
+
+    const session = await executor.startExecutionSession({
+      issueIdentifier: 'SAH-AUTOFIX',
+      useIsolation: false,
+    });
+
+    // Wait briefly for background pipeline to finish both passes
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    const finalSession = storage.getSession(session.id);
+    expect(finalSession).toBeDefined();
+    expect(finalSession?.status).toBe('completed');
+    expect(finalSession?.autoFixAttempts).toBe(1);
+    expect(finalSession?.verificationPassed).toBe(true);
+
+    // Verify self-healing prompt was dispatched with pinpoint diagnostic details
+    expect(promptSpy).toHaveBeenCalledTimes(2);
+    const repairPrompt = promptSpy.mock.calls[1][0].prompt;
+    expect(repairPrompt).toContain('Autonomous Self-Healing Attempt 1 of 3');
+    expect(repairPrompt).toContain('src/app.ts:10:5');
+    expect(repairPrompt).toContain('[TS2304]');
+    expect(repairPrompt).toContain('Cannot find name \'Config\'');
+  });
+
+  it('marks session as failed and attaches pinpoint diagnostics when auto-repair budget is exhausted', async () => {
+    setupPlan('SAH-EXHAUSTED', 'approved');
+
+    const mockAntigravity = new AntigravityAdapter(mockConfig);
+    vi.spyOn(mockAntigravity, 'executePrompt').mockResolvedValue({
+      success: true,
+      exitCode: 0,
+      signal: null,
+      stdout: '{"status":"SUCCESS"}',
+      stderr: '',
+      durationMs: 500,
+      timedOut: false,
+    });
+
+    const mockVerification = new VerificationService();
+    // Always fails with TS error
+    vi.spyOn(mockVerification, 'runAllChecks').mockResolvedValue([
+      {
+        name: 'typecheck',
+        command: 'npm run typecheck',
+        status: 'failed',
+        durationMs: 250,
+        output: "src/app.ts:10:5 - error TS2304: Cannot find name 'Config'.",
+      },
+    ]);
+
+    const storage = new ExecutionStorageService(mockConfig, sessionsDir);
+    const executor = new ImplementationExecutor({
+      config: mockConfig,
+      antigravityAdapter: mockAntigravity,
+      repoRegistry: new RepositoryRegistry(mockConfig),
+      planStorage: new PlanStorageService(mockConfig),
+      executionStorage: storage,
+      verificationService: mockVerification,
+    });
+
+    const session = await executor.startExecutionSession({
+      issueIdentifier: 'SAH-EXHAUSTED',
+      useIsolation: false,
+    });
+
+    // Wait for all 3 retry passes to complete
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    const finalSession = storage.getSession(session.id);
+    expect(finalSession).toBeDefined();
+    expect(finalSession?.status).toBe('failed');
+    expect(finalSession?.autoFixAttempts).toBe(3);
+    expect(finalSession?.stuckInHallucination).toBe(true);
+    expect(finalSession?.diagnostics).toBeDefined();
+    expect(finalSession?.diagnostics?.length).toBe(1);
+    expect(finalSession?.diagnostics?.[0].file).toBe('src/app.ts');
+    expect(finalSession?.diagnostics?.[0].code).toBe('TS2304');
   });
 });

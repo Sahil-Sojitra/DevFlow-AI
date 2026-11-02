@@ -12,6 +12,7 @@ export * from './services/planner.js';
 export * from './services/git-ops.js';
 export * from './services/verification.js';
 export * from './services/execution-storage.js';
+export * from './services/diagnostics.js';
 export * from './services/executor.js';
 export * from './types/index.js';
 

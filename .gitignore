@@ -28,3 +28,6 @@ scratch/
 
 
 .next
+
+# Local runtime data
+data/
