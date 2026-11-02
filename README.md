@@ -1,117 +1,144 @@
-# DevFlow AI — Local-First Developer Automation
+# DevFlow-AI
 
-DevFlow AI connects tickets (Linear) to the local Google Antigravity CLI for controlled, repository-aware implementation planning, verification, and human review on Windows.
+<div align="center">
 
----
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-18%2B-green.svg)](https://nodejs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16.4.4-black.svg)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue.svg)](https://www.typescriptlang.org/)
+[![Unit Tests](https://img.shields.io/badge/Tests-98%20Passing-brightgreen.svg)](tests/unit)
+[![Cloud LLM Cost](https://img.shields.io/badge/Cloud%20LLM%20Cost-%240-success.svg)](#local-first-architecture)
 
-## Milestone Status
+**A production-ready, local-first autonomous AI engineering framework that bridges issue trackers to local coding agents with human-in-the-loop control, pinpoint error tracking, and autonomous self-healing.**
 
-- **Milestone 1**: Project Foundation & Antigravity CLI Adapter (Complete)
-- **Milestone 2**: Linear Integration & Repository-Aware Ticket Planning (Complete)
-- **Milestone 3**: Local Next.js Developer Dashboard & Plan Review Workflow (Complete)
-- **Milestone 4**: Controlled Implementation & Verification (Complete)
+[Features](#core-pillars) • [Architecture](#architecture) • [Quick Start](#quick-start) • [Dashboard Guide](#dashboard-workflows) • [CLI Reference](#cli-reference) • [Configuration](#configuration) • [Security & Guardrails](#security--guardrails)
 
----
-
-## Key Features & Architecture
-
-1. **Local Next.js Developer Dashboard (Phase 3 Addition)**:
-   - Modern, responsive local web interface built with **Next.js (App Router)** and **React 19**.
-   - Binds strictly to `localhost` (`http://localhost:3000`) for private developer use.
-   - **Sidebar**: Quick navigation across Overview, My Tickets, Plan Review, Repositories, and Settings with live Antigravity and Linear status indicators.
-   - **Ticket Inbox**: Searchable, filterable assigned ticket list with priority/status badges and deep inspection modals (description, acceptance criteria, comments, author timestamps).
-   - **Plan Review Workspace**: Dual-selector for tickets and allowed repositories, branch indicators, pre-existing uncommitted change warnings, interactive plan generation, Markdown plan reader, and persistent Approve/Reject decision controls.
-   - **Repository Registry**: Server-side containment registry verifying allowed repositories, active branches, and Git clean/dirty states.
-   - **Settings & Safety Policies**: Read-only overview of verified paths, execution modes, and containment rules without exposing credentials.
-
-2. **Local-First & Zero Paid AI API Dependencies**:
-   - Uses the locally installed, verified Google Antigravity CLI (`agy.exe`) in non-interactive print mode (`--print ... --output-format json`).
-   - Requires no paid OpenAI, Anthropic, or external cloud LLM API tokens.
-
-3. **Official Linear GraphQL Integration**:
-   - Read-only connection to Linear's official GraphQL API (`https://api.linear.app/graphql`).
-   - Queries viewer identity (`viewer`) and retrieves assigned tickets (`IssueFilter: { assignee: { id: { eq: viewer.id } } }`).
-   - Supports cursor-based pagination (`pageInfo { hasNextPage, endCursor }`).
-   - Retrieves descriptions, acceptance criteria, comments, priorities, labels, and relations.
-   - Robust error handling: authentication (401/403), rate limits (429), GraphQL errors, and network timeouts.
-   - Credentials protection: `LINEAR_API_KEY` is scrubbed from error messages and never passed to Antigravity or the browser.
-
-4. **Repository-Aware Implementation Planning**:
-   - Gathers repository context safely: project structure, package scripts, project instructions (`GEMINI.md`, `README.md`), and relevant source files.
-   - **Security Exclusions**: Strictly ignores `.env`, private keys (`.pem`, `.key`), credentials, tokens, `node_modules`, and `.git`.
-   - **Repository Containment**: Execution is strictly confined to whitelisted paths in `DEVFLOW_ALLOWED_WORKING_DIRS`.
-   - **Factual & Honest Prompting**: The planner explicitly instructs the agent to flag missing backend contracts, endpoints, or requirements under *Risks & Unresolved Questions* rather than hallucinating or inventing answers    - **Plan Storage & Review State**: Saves structured Markdown plans to `data/plans/<ISSUE-ID>.md` with frontmatter metadata. Persists approval and rejection decisions with developer notes in `data/plans/reviews.json`.
-
-5. **Controlled Implementation & Verification (Milestone 4 Addition)**:
-   - **Explicit Authorization Only**: Implementation can only begin when the plan has been formally reviewed and `approved`. Approval alone never starts execution; a human must explicitly confirm execution via the dashboard modal or CLI.
-   - **Working Tree Protection & Git Worktree Isolation**: Detects staged, unstaged, and untracked files. If the working tree has uncommitted changes, DevFlow automatically runs the implementation in an isolated Git worktree (`<repo>/.devflow/worktrees/<sessionId>`), guaranteeing the user's main working tree is never overwritten or reset. If isolation fails, execution on a dirty repository is strictly blocked.
-   - **Controlled Antigravity Agent**: Implements the approved plan within strict boundaries. Concurrency guards prevent duplicate runs on the same repository or issue. Environment secrets are strictly scrubbed.
-   - **Automated Verification Pipeline**: Inspects `package.json` for configured scripts (`typecheck`, `test`, `lint`, `build`). Executes configured checks sequentially and records pass/fail status, duration, and output. Unconfigured checks are marked as `not configured`.
-   - **Changed Files & Unified Diff Inspector**: Distinguishes pre-existing changes from changes introduced during the session. Provides full unified syntax-highlighted diffs in the dashboard.
-   - **Zero Automatic Deployments Guarantee**: Never automatically commits, pushes, merges, or deploys. The developer retains full control.
+</div>
 
 ---
 
-## Project Structure
+## Overview
 
-```text
-DevFlow/
-├── src/
-│   ├── index.ts               # CLI entry point (Linear commands, plan generator, implement runner)
-│   ├── app/                   # Next.js App Router (Dashboard & API endpoints)
-│   │   ├── layout.tsx         # Root layout with dark theme & typography
-│   │   ├── page.tsx           # Main developer dashboard page
-│   │   ├── globals.css        # Design tokens, dark theme, and Markdown styles
-│   │   └── api/               # Server-side REST API routes
-│   │       ├── status/        # System health & secret-redacted status
-│   │       ├── tickets/       # Assigned Linear tickets & ticket details
-│   │       ├── repositories/  # Configured allowed repository registry
-│   │       ├── plans/         # Plan listing, generation, and review approval
-│   │       └── sessions/      # Execution session listing, start, cancel, and diff
-│   ├── components/            # React UI components
-│   │   ├── Sidebar.tsx        # Navigation sidebar with connection badges & active sessions
-│   │   ├── OverviewView.tsx   # Overview metrics, greeting, and recent activity
-│   │   ├── TicketsView.tsx    # Searchable, filterable ticket inbox
-│   │   ├── TicketDetailModal.tsx # Full ticket description & comments modal
-│   │   ├── PlanReviewView.tsx # Plan generation, approve/reject & execution trigger
-│   │   ├── ExecutionConfirmationModal.tsx # Pre-flight checklist & isolation confirmation
-│   │   ├── ExecutionSessionsView.tsx # Live monitoring, diffs, logs, & verification cards
-│   │   ├── RepositoriesView.tsx # Allowed repositories & Git status inspector
-│   │   └── SettingsView.tsx   # Security policies & configuration status
-│   ├── adapters/
-│   │   ├── antigravity.ts     # Antigravity CLI process adapter with safety controls
-│   │   └── linear.ts          # Read-only Linear GraphQL adapter
-│   ├── services/
-│   │   ├── planner.ts         # Repository inspection and plan generation service
-│   │   ├── plan-storage.ts    # Safe plan file storage & review decisions service
-│   │   ├── repo-registry.ts   # Repository allowlist & Git inspection service
-│   │   ├── git-ops.ts         # Working tree status, worktree isolation, & diff generation
-│   │   ├── verification.ts    # Configured project checks (typecheck, test, lint, build)
-│   │   ├── execution-storage.ts # Session persistence, concurrency locks, & log storage
-│   │   └── executor.ts        # Controlled implementation & verification orchestrator
-│   ├── config/
-│   │   └── env.ts             # Zod-validated environment configuration
-│   └── types/
-│       ├── antigravity.ts     # Antigravity types and schemas
-│       ├── linear.ts          # Linear issue, comment, and user schemas
-│       ├── execution.ts       # Session state transitions, verification, and diff types
-│       └── index.ts           # Types barrel export
-├── tests/
-│   └── unit/                  # Comprehensive unit test suite (71 tests across 13 suites)
-├── data/
-│   ├── plans/                 # Generated implementation plans & reviews.json
-│   └── sessions/              # Persisted execution sessions (*.json)
-├── next.config.mjs            # Next.js configuration (Webpack extension alias)
-├── tsconfig.json              # Full project & Next.js TypeScript configuration
-├── tsconfig.build.json        # Standalone build configuration for CLI binary
-├── vitest.config.ts           # Vitest configuration with @/ path alias
-├── package.json               # Dependencies and scripts
-└── README.md
+DevFlow-AI transforms how software engineers build software with AI. Instead of relying on brittle copy-pasting or expensive cloud LLM APIs, DevFlow-AI runs **locally on your machine**, binding your issue tracker ([Linear](https://linear.app)) directly to your local coding agent ([Google Antigravity CLI](https://github.com)).
+
+### The Philosophy: Human-in-the-Loop, Autonomous Execution
+
+DevFlow-AI is built around a simple principle: **Humans make decisions; AI handles execution.**
+
+1. **AI plans**: The agent inspects your repository context and generates a structured, verified implementation plan.
+2. **Human approves**: You review the plan, API contracts, and risk analysis in the local dashboard.
+3. **AI implements & verifies**: Upon explicit confirmation, the agent creates a dedicated branch, implements the code, runs your project's verification suite (`typecheck`, `test`, `lint`, `build`), and automatically diagnoses and heals any errors.
+4. **Human reviews diff**: Inspect line-by-line syntax-highlighted diffs in the browser and request revisions if needed.
+5. **Human decides**: Choose between a **1-click local merge** into your base branch or an **automated remote push & GitHub Pull Request**.
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TD
+    subgraph Tracker["Issue Tracker"]
+        L1["Linear Issue Assigned"]
+    end
+
+    subgraph Planning["Phase 1: Planning"]
+        P1["Repository Context Gathering"]
+        P2["Antigravity CLI Agent"]
+        P3["Structured Markdown Plan"]
+        P4{"Human Approval Checkpoint"}
+    end
+
+    subgraph Execution["Phase 2: Execution & Verification"]
+        E1["Pull Custom Base Branch\n(main / master / develop)"]
+        E2["Create Dedicated Ticket Branch\n(feature/TICKET-ID)"]
+        E3["Autonomous Implementation Run"]
+        E4["Verification Pipeline\n(typecheck · test · lint · build)"]
+    end
+
+    subgraph Healing["Phase 3: Autonomous Self-Healing"]
+        H1{"Verification Passed?"}
+        H2["Pinpoint Diagnostics\n(Error Signature Extraction)"]
+        H3["Targeted Agent Fix Loop\n(Max 2 Retries)"]
+    end
+
+    subgraph Review["Phase 4: Diff & Revision"]
+        R1["Structured In-Browser Diff Viewer"]
+        R2["Inline AI Revision Loop\n(Targeted Prompts)"]
+        R3{"Human Merge Decision"}
+    end
+
+    subgraph Delivery["Phase 5: Delivery & Sync"]
+        D1["Option 1: One-Click Local Merge"]
+        D2["Option 2: Push Remote & Create GitHub PR"]
+        D3["Two-Way Linear Status Sync & Comment"]
+    end
+
+    L1 --> P1 --> P2 --> P3 --> P4
+    P4 -- "Approved" --> E1 --> E2 --> E3 --> E4 --> H1
+    H1 -- "Failures Found" --> H2 --> H3 --> E4
+    H1 -- "All Checks Pass" --> R1
+    R1 <--> R2
+    R1 --> R3
+    R3 -- "Local Merge" --> D1 --> D3
+    R3 -- "Remote PR" --> D2 --> D3
 ```
 
 ---
 
-## Configuration
+## Core Pillars
+
+### 1. Autonomous Self-Healing & Pinpoint Diagnostics
+When verification fails, DevFlow-AI does not give up or spit out raw unformatted terminal dumps:
+- **Intelligent Error Parser**: Dedicated error signature extractors for TypeScript (`tsc`), Vitest/Jest, ESLint, and Next.js compiler output.
+- **Pinpoint Context**: Automatically strips ANSI color codes, deduplicates repeated errors, and extracts exact `file:line:col` coordinates.
+- **Bounded Retry Loop**: Hands the extracted diagnostics back to the agent in an autonomous self-healing loop (up to 2 retries) to fix errors before notifying the developer.
+
+### 2. Direct Ticket Branching & One-Click Merge
+- **Clean Branch Isolation**: Automatically pulls the latest changes from your chosen base branch (`main`, `master`, `develop`, or custom) and checks out a clean ticket branch (`feature/SAH-10` or a custom branch name).
+- **Direct Workspace Workflow**: Operates directly in your repository without fragile Git worktree locks on Windows and macOS.
+- **One-Click Merge**: Once checks pass and the diff is reviewed, merge cleanly back into the base branch with a single click.
+
+### 3. Automated Remote Push & GitHub Pull Request Creation
+- **Git Remote Detection**: Parses your Git origin remote URL (supporting both HTTPS and SSH formats like `git@github.com:org/repo.git`).
+- **Automated PR**: If `GITHUB_TOKEN` is configured, DevFlow-AI pushes the branch and creates a GitHub Pull Request via the official GitHub REST API with ticket titles, descriptions, and verification logs.
+- **1-Click Web Fallback**: If no token is provided, DevFlow-AI still pushes the branch and instantly generates a pre-filled GitHub web comparison URL.
+
+### 4. Real-Time SSE Log Streaming & Two-Way Linear Sync
+- **Live Server-Sent Events (SSE)**: Streams execution logs, compiler output, and state transitions in real time (`GET /api/sessions/[id]/stream`) straight to an interactive terminal UI with zero polling.
+- **Two-Way Linear Status Sync**: Automatically moves tickets from `Todo`/`In Progress` to `In Review` or `Done` when execution completes.
+- **Automated Summary Comments**: Posts an audit comment to the Linear issue containing execution durations, verification test results, and file change statistics.
+
+### 5. Interactive In-Browser Diff Viewer & Inline AI Revision
+- **Dual-Gutter Unified Diff**: Inspect additions, deletions, line numbers, and file change summaries directly in the dashboard.
+- **File Filter Chips**: Filter diffs by file name or toggle individual files open and closed.
+- **Inline AI Revision Loop**: Not satisfied with a specific change? Type feedback into the inline revision box to generate a targeted revision plan and apply changes immediately without restarting the entire session.
+
+---
+
+## Prerequisites
+
+Before running DevFlow-AI, ensure your system has:
+
+- **Node.js**: v18.0.0 or higher (`node -v`)
+- **Git**: Installed and available in your `PATH` (`git --version`)
+- **Google Antigravity CLI**: Installed locally (`agy --version`).
+  - Typically located at `%LOCALAPPDATA%\agy\bin\agy.exe` on Windows or `/usr/local/bin/agy` on macOS/Linux.
+- *(Optional)* **Linear Account**: Personal API Key from [Linear Settings > API](https://linear.app/settings/api).
+- *(Optional)* **GitHub Personal Access Token**: Token with `repo` scope for automated Pull Request creation.
+
+---
+
+## Quick Start
+
+### 1. Clone & Install Dependencies
+
+```bash
+git clone https://github.com/your-username/devflow-ai.git
+cd devflow-ai
+npm install
+```
+
+### 2. Configure Environment
 
 Copy `.env.example` to `.env`:
 
@@ -119,119 +146,189 @@ Copy `.env.example` to `.env`:
 cp .env.example .env
 ```
 
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `LINEAR_API_KEY` | Linear Personal API Key ([Linear API Settings](https://linear.app/settings/api)) | *Required for Linear commands & ticket inbox* |
-| `LINEAR_API_URL` | Linear GraphQL endpoint | `https://api.linear.app/graphql` |
-| `ANTIGRAVITY_BIN_PATH` | Path to `agy.exe` | `%LOCALAPPDATA%\agy\bin\agy.exe` |
-| `DEVFLOW_ALLOWED_WORKING_DIRS` | Semicolon/comma-separated whitelist of allowed repositories | Current working directory |
-| `DEVFLOW_PLANS_DIR` | Directory where generated markdown plans are stored | `data/plans` |
-| `DEVFLOW_TIMEOUT_MS` | Process timeout for Antigravity executions (ms) | `60000` |
-| `DEVFLOW_INTEGRATION_TEST` | Enable live Antigravity integration test (`true`/`false`) | `false` |
-| `LINEAR_INTEGRATION_TEST` | Enable live Linear integration test (`true`/`false`) | `false` |
+Edit `.env` with your settings:
 
----
+```env
+# Path to Antigravity CLI (agy / agy.exe)
+ANTIGRAVITY_BIN_PATH="C:\\Users\\<USER>\\AppData\\Local\\agy\\bin\\agy.exe"
 
-## Dashboard Usage (Phase 3)
+# Whitelist of repository directories DevFlow-AI is permitted to touch
+DEVFLOW_ALLOWED_WORKING_DIRS="d:\\projects\\my-app;d:\\projects\\backend"
 
-### Start Local Dashboard
+# Linear Personal API Key (Required for ticket sync)
+LINEAR_API_KEY="lin_api_xxxxxxxxxxxxxxxxxxxxxxxx"
+
+# Optional: GitHub Token for automated PR creation
+GITHUB_TOKEN="ghp_xxxxxxxxxxxxxxxxxxxxxxxx"
+```
+
+### 3. Start the Local Developer Dashboard
+
 ```bash
 npm run dev
 ```
-Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
-### Dashboard Workflows
-1. **Overview**: View your assigned ticket count, saved plan count, pending reviews, and connected integrations.
-2. **My Tickets**:
-   - Search across ticket IDs (`SAH-5`), titles, descriptions, and labels.
-   - Filter by status (`Backlog`, `In Progress`, `Todo`, `Done`).
-   - Click **View Details** to inspect requirements and comment history.
-   - Click **Plan** to immediately stage the ticket for implementation planning.
-3. **Plan Review**:
-   - Select any assigned ticket or existing plan.
-   - Choose the target repository from the server allowlist.
-   - Check the active branch and uncommitted changes alert.
-   - Click **Generate Plan** to run Antigravity.
-   - Review the generated plan tasks, API contracts, verification plan, and assumptions.
-   - Click **Approve Plan** or **Reject Plan** (with optional developer notes). Decisions are saved to `data/plans/reviews.json`.
-4. **Repositories**: Inspect verified allowed repository paths, Git branches, and working tree clean/dirty states.
-5. **Settings**: Review active security boundaries, verified binary paths, and secret redaction guarantees.
+Open **[http://localhost:4000](http://localhost:4000)** in your browser.
 
 ---
 
-## CLI Usage (Preserved from M1 & M2)
+## Dashboard Workflows
 
-You can also use DevFlow AI entirely from the command line:
+The local dashboard is divided into focused workspaces:
+
+| View | Purpose |
+| :--- | :--- |
+| **Overview** | High-level system health, connected integrations, assigned tickets counter, and recent activity. |
+| **My Tickets** | Search, filter, and inspect assigned Linear tickets. View descriptions, acceptance criteria, and comments. Click **Plan** to start implementation planning. |
+| **Plan Review** | Inspect generated markdown plans, review risks, and confirm or reject plans with developer feedback. |
+| **Active Sessions** | Monitor running and completed implementation sessions with live SSE log streaming, step badges, and verification diagnostics. |
+| **Diff Viewer** | Review dual-gutter line-numbered diffs, submit inline AI revision notes, or trigger **One-Click Merge** or **Create PR**. |
+| **Repositories** | View allowlisted repositories, active Git branches, and working tree clean/dirty status. |
+| **Settings** | Audit active security boundaries, verified binary paths, and secret redaction policies. |
+
+---
+
+## CLI Reference
+
+DevFlow-AI also includes a full-featured CLI for headless execution or scripting:
 
 ```bash
-# Verify Linear connection and show authenticated user
+# Verify Linear connection and inspect authenticated user
 npm run linear:whoami
 
 # List assigned Linear tickets
 npm run linear:issues
 
-# Inspect a specific ticket (e.g. SAH-5)
+# Inspect a specific ticket by identifier
 npm run linear:issue -- SAH-5
 
-# Generate a plan for an issue
+# Generate an implementation plan for a ticket
 npm run plan -- --issue SAH-5
 
-# Overwrite an existing plan
+# Force-overwrite an existing plan
 npm run plan -- --issue SAH-5 --overwrite
 
-# Self-test ping to the local Antigravity CLI
-node dist/index.js --ping
+# Run an approved implementation session headlessly
+npm run implement -- --session <SESSION_ID>
+
+# Build standalone CLI and production Next.js bundle
+npm run build
 ```
+
+---
+
+## Configuration Reference
+
+All settings can be configured via environment variables or `.env`:
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `ANTIGRAVITY_BIN_PATH` | Path to the local `agy` / `agy.exe` binary. | `%LOCALAPPDATA%\agy\bin\agy.exe` (Win) or `agy` |
+| `DEVFLOW_ALLOWED_WORKING_DIRS` | Semicolon or comma-separated list of allowed repository directories. | Current working directory |
+| `DEVFLOW_PLANS_DIR` | Directory where generated markdown plans are stored. | `data/plans` |
+| `DEVFLOW_TIMEOUT_MS` | Process timeout for agent executions in milliseconds. | `60000` (1 minute) |
+| `LINEAR_API_KEY` | Personal API key for Linear GraphQL API. | `""` *(Optional if using offline mode)* |
+| `LINEAR_API_URL` | Linear GraphQL endpoint. | `https://api.linear.app/graphql` |
+| `GITHUB_TOKEN` | GitHub Personal Access Token for opening Pull Requests. | `""` *(Falls back to web comparison link)* |
+| `DEVFLOW_INTEGRATION_TEST` | Enable opt-in live Antigravity CLI integration test. | `false` |
+| `LINEAR_INTEGRATION_TEST` | Enable opt-in live Linear GraphQL integration test. | `false` |
+
+---
+
+## Security & Guardrails
+
+DevFlow-AI is engineered from the ground up with defensive security defaults:
+
+1. **Strict Localhost Binding**: The Next.js dashboard server binds exclusively to `localhost` (`127.0.0.1:4000`) and will not listen on public interfaces.
+2. **Repository Allowlist**: Execution is strictly restricted to folders listed in `DEVFLOW_ALLOWED_WORKING_DIRS`. Any path traversal (`../`) or attempts to access unauthorized folders are blocked immediately.
+3. **Automated Secret Redaction**: `LINEAR_API_KEY`, `GITHUB_TOKEN`, `.env` contents, `.pem` certificates, and private keys are scrubbed from error messages, API responses, and agent prompts.
+4. **Concurrency Locks**: Process-level concurrency locks prevent simultaneous overlapping runs on the same repository or issue.
+5. **No Blind Deployments**: DevFlow-AI will never push to production or merge into your base branch without explicit human confirmation.
 
 ---
 
 ## Verification & Testing
 
-### 1. Typecheck
+DevFlow-AI maintains a comprehensive test suite covering all services, adapters, diagnostic parsers, and API endpoints:
+
 ```bash
+# Run TypeScript type check
 npm run typecheck
-```
 
-### 2. Run Automated Unit Tests (Mocked API & CLI)
-```bash
+# Run 98 unit tests across 14 test suites
 npm test
+
+# Run Next.js production build check
+npm run build:next
 ```
-*Runs all 43 unit tests covering:*
-- Linear viewer authentication and issue filtering.
-- Cursor-based pagination.
-- Linear HTTP 401, 403, 429, 500, and GraphQL errors.
-- Network timeouts and response validation.
-- API key scrubbing from error messages and server responses.
-- Repository allowlist enforcement and Git status checks.
-- Plan storage, path traversal defenses, and reviews persistence.
-- Concurrency lock preventing duplicate simultaneous plan generations.
-- Overwrite protection for plan files.
-- Antigravity process invocation, timeout, and concurrency lock.
-
-### 3. Production Build
-```bash
-npm run build
-```
-*Compiles the standalone CLI binary (`tsc -p tsconfig.build.json`) and Next.js production web bundle (`next build --webpack`).*
-
-### 4. Opt-In Live Integration Tests
-Live tests require explicit opt-in flags and are excluded from default test runs:
-
-- **Antigravity CLI**:
-  ```powershell
-  $env:DEVFLOW_INTEGRATION_TEST="true"; npm run test:integration
-  ```
-- **Linear GraphQL API**:
-  ```powershell
-  $env:LINEAR_INTEGRATION_TEST="true"; npm run test:integration
-  ```
 
 ---
 
-## Limitations & Guardrails
+## Project Structure
 
-1. **Localhost Only**: The dashboard server binds strictly to `127.0.0.1` and is designed for single-user local use.
-2. **Read-Only Linear Integration**: DevFlow AI does not mutate Linear issues, change ticket statuses, or add comments.
-3. **No Automatic Code Changes**: Plan generation is read-only. **Plan approval in Milestone 3 does NOT trigger code implementation, file edits, or script executions.**
-4. **No Automatic Git Commits or Push**: Git commit, push, or merge actions are intentionally omitted.
-5. **Honest Unknowns**: When API contracts or requirements are absent from ticket details, the generated plan highlights them under *Risks, Assumptions and Unresolved Questions* rather than assuming or inventing backend behavior.
+```text
+DevFlow-AI/
+├── src/
+│   ├── app/                      # Next.js App Router (Dashboard & API endpoints)
+│   │   ├── layout.tsx            # Global layout with dark theme & typography
+│   │   ├── page.tsx              # Main developer dashboard client
+│   │   ├── globals.css           # Design tokens, terminal styling, & markdown styles
+│   │   └── api/                  # Server-side REST API & SSE streaming
+│   │       ├── status/           # System health & secret-redacted settings
+│   │       ├── tickets/          # Assigned Linear tickets & details
+│   │       ├── repositories/     # Repository allowlist registry & Git status
+│   │       ├── plans/            # Plan generation, storage, & review approvals
+│   │       └── sessions/         # Execution sessions, diffs, PRs, & SSE log stream
+│   ├── components/               # React UI components
+│   │   ├── Sidebar.tsx           # Navigation sidebar with connection badges
+│   │   ├── OverviewView.tsx      # Overview metrics & quick action cards
+│   │   ├── TicketsView.tsx       # Searchable ticket inbox with detail modals
+│   │   ├── PlanReviewView.tsx    # Plan review, risk inspection, & decision controls
+│   │   ├── ExecutionConfirmationModal.tsx # Pre-flight checklist & branch setup modal
+│   │   ├── ExecutionSessionsView.tsx      # SSE live terminal, diff viewer, merge/PR modal
+│   │   ├── RepositoriesView.tsx  # Git status & branch inspector
+│   │   └── SettingsView.tsx      # Security boundaries & configuration overview
+│   ├── adapters/
+│   │   ├── antigravity.ts        # Antigravity CLI adapter with safety controls
+│   │   └── linear.ts             # Linear GraphQL adapter (Two-way sync & queries)
+│   ├── services/
+│   │   ├── diagnostics.ts        # Pinpoint error extraction & compiler diagnostics
+│   │   ├── executor.ts           # Controlled execution & autonomous self-healing loop
+│   │   ├── git-ops.ts            # Git branching, remote push, merge, & diff parsing
+│   │   ├── github.ts             # GitHub REST API adapter & web URL generator
+│   │   ├── planner.ts            # Repository context gathering & plan generator
+│   │   ├── plan-storage.ts       # Plan persistence & review state management
+│   │   ├── repo-registry.ts      # Repository allowlist enforcement
+│   │   ├── verification.ts       # Verification runner (typecheck, test, lint, build)
+│   │   └── execution-storage.ts  # Session storage & Server-Sent Events emitter
+│   ├── config/
+│   │   └── env.ts                # Zod-validated environment configuration
+│   └── types/                    # Shared TypeScript interfaces & schemas
+├── tests/
+│   ├── unit/                     # 98 unit tests (14 suites) with mock adapters
+│   └── integration/              # Opt-in live Antigravity & Linear integration tests
+├── data/
+│   ├── plans/                    # Stored implementation plans & review decisions
+│   └── sessions/                 # Persisted execution sessions & diff logs
+├── package.json
+└── README.md
+```
+
+---
+
+## Contributing
+
+Contributions from the open-source community are very welcome!
+
+1. Fork the repository.
+2. Create your feature branch (`git checkout -b feature/amazing-feature`).
+3. Commit your changes (`git commit -m "feat: add amazing feature"`).
+4. Verify all tests pass (`npm run typecheck && npm test`).
+5. Push to the branch (`git push origin feature/amazing-feature`).
+6. Open a Pull Request.
+
+---
+
+## License
+
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
