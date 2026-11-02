@@ -5,11 +5,11 @@ import {
   Search,
   Filter,
   RefreshCw,
-  ExternalLink,
-  Sparkles,
   MessageSquare,
   AlertTriangle,
   ArrowRight,
+  Terminal,
+  ExternalLink,
 } from 'lucide-react';
 import type { LinearIssue } from '@/types/linear';
 
@@ -59,34 +59,65 @@ export function TicketsView({
   }, [tickets, searchQuery, selectedStateFilter]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       {/* Header & Controls */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '0.85rem',
+        }}
+      >
         <div>
-          <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#fff' }}>My Linear Tickets</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-            Assigned issues retrieved from Linear. Select any ticket to inspect or generate an implementation plan.
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+            <h1
+              style={{
+                fontSize: '1.25rem',
+                fontWeight: 600,
+                letterSpacing: '-0.02em',
+                color: 'var(--text-primary)',
+              }}
+            >
+              Ticket Inbox
+            </h1>
+            <span
+              className="mono-chip"
+              style={{
+                fontSize: '0.7rem',
+                color: 'var(--text-secondary)',
+                padding: '0.1rem 0.45rem',
+              }}
+            >
+              {tickets.length} assigned
+            </span>
+          </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+            Assigned Linear tickets staged for autonomous repository implementation planning.
           </p>
         </div>
+
         <button
           onClick={onRefresh}
           disabled={loading}
           style={{
-            display: 'flex',
+            display: 'inline-flex',
             alignItems: 'center',
             gap: '0.45rem',
-            padding: '0.55rem 0.95rem',
+            padding: '0.45rem 0.85rem',
             borderRadius: 'var(--radius-sm)',
             border: '1px solid var(--border-default)',
             color: 'var(--text-primary)',
-            fontSize: '0.85rem',
+            fontSize: '0.8rem',
             fontWeight: 500,
             backgroundColor: 'var(--bg-secondary)',
+            transition: 'background-color 0.15s ease',
           }}
           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)')}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-secondary)')}
         >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
           <span>Refresh</span>
         </button>
       </div>
@@ -95,17 +126,17 @@ export function TicketsView({
       <div
         style={{
           display: 'flex',
-          gap: '1rem',
+          gap: '0.75rem',
           flexWrap: 'wrap',
           backgroundColor: 'var(--bg-secondary)',
-          padding: '0.75rem 1rem',
-          borderRadius: 'var(--radius-md)',
+          padding: '0.65rem 0.85rem',
+          borderRadius: 'var(--radius-sm)',
           border: '1px solid var(--border-subtle)',
         }}
       >
-        <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: '220px' }}>
           <Search
-            size={16}
+            size={14}
             style={{
               position: 'absolute',
               left: '0.75rem',
@@ -116,37 +147,39 @@ export function TicketsView({
           />
           <input
             type="text"
-            placeholder="Search tickets by identifier, title, keyword, label..."
+            placeholder="Filter by ID (e.g. SAH-5), title, or label..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
               width: '100%',
-              padding: '0.5rem 0.75rem 0.5rem 2.25rem',
-              borderRadius: 'var(--radius-sm)',
+              padding: '0.45rem 0.75rem 0.45rem 2.15rem',
+              borderRadius: 'var(--radius-xs)',
               border: '1px solid var(--border-default)',
               backgroundColor: 'var(--bg-primary)',
               color: 'var(--text-primary)',
-              fontSize: '0.85rem',
+              fontSize: '0.82rem',
               outline: 'none',
+              fontFamily: 'var(--font-sans)',
             }}
           />
         </div>
 
         {availableStates.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Filter size={15} color="var(--text-muted)" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+            <Filter size={13} color="var(--text-muted)" />
             <select
               value={selectedStateFilter}
               onChange={(e) => setSelectedStateFilter(e.target.value)}
               style={{
-                padding: '0.5rem 0.75rem',
-                borderRadius: 'var(--radius-sm)',
+                padding: '0.45rem 0.65rem',
+                borderRadius: 'var(--radius-xs)',
                 border: '1px solid var(--border-default)',
                 backgroundColor: 'var(--bg-primary)',
                 color: 'var(--text-primary)',
-                fontSize: '0.85rem',
+                fontSize: '0.8rem',
                 outline: 'none',
                 cursor: 'pointer',
+                fontFamily: 'var(--font-mono)',
               }}
             >
               <option value="ALL">All States ({tickets.length})</option>
@@ -160,31 +193,32 @@ export function TicketsView({
         )}
       </div>
 
-      {/* Error Banner */}
+      {/* Error Alert */}
       {error && (
         <div
           style={{
             backgroundColor: 'var(--danger-subtle)',
-            border: '1px solid var(--danger)',
-            borderRadius: 'var(--radius-md)',
-            padding: '1rem',
+            border: '1px solid var(--danger-border)',
+            borderRadius: 'var(--radius-sm)',
+            padding: '0.85rem 1rem',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            gap: '1rem',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <AlertTriangle size={18} color="var(--danger)" />
-            <span style={{ fontSize: '0.88rem', color: '#fca5a5' }}>{error}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <AlertTriangle size={16} color="var(--danger)" />
+            <span style={{ fontSize: '0.82rem', color: '#fca5a5' }}>{error}</span>
           </div>
           <button
             onClick={onRefresh}
             style={{
-              padding: '0.35rem 0.75rem',
-              borderRadius: 'var(--radius-sm)',
+              padding: '0.3rem 0.65rem',
+              borderRadius: 'var(--radius-xs)',
               backgroundColor: 'var(--danger)',
               color: '#fff',
-              fontSize: '0.8rem',
+              fontSize: '0.75rem',
               fontWeight: 600,
             }}
           >
@@ -195,15 +229,15 @@ export function TicketsView({
 
       {/* Loading Skeleton */}
       {loading && tickets.length === 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {[1, 2, 3].map((n) => (
             <div
               key={n}
               className="animate-pulse"
               style={{
-                height: '84px',
+                height: '72px',
                 backgroundColor: 'var(--bg-secondary)',
-                borderRadius: 'var(--radius-md)',
+                borderRadius: 'var(--radius-sm)',
                 border: '1px solid var(--border-subtle)',
               }}
             />
@@ -215,26 +249,26 @@ export function TicketsView({
       {!loading && filteredTickets.length === 0 && !error && (
         <div
           style={{
-            padding: '3.5rem 2rem',
+            padding: '3rem 1.5rem',
             textAlign: 'center',
             backgroundColor: 'var(--bg-secondary)',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px dashed var(--border-subtle)',
           }}
         >
-          <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#fff', marginBottom: '0.35rem' }}>
-            {tickets.length === 0 ? 'No assigned tickets found' : 'No tickets match your filter'}
+          <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.35rem' }}>
+            {tickets.length === 0 ? 'No assigned tickets found' : 'No tickets match filter'}
           </div>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', maxWidth: '400px', margin: '0 auto' }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', maxWidth: '380px', margin: '0 auto' }}>
             {tickets.length === 0
               ? 'There are currently no open tickets assigned to your Linear user account.'
-              : 'Try clearing your search query or changing the state filter.'}
+              : 'Try clearing your search query or switching state filter.'}
           </p>
         </div>
       )}
 
       {/* Ticket List */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         {filteredTickets.map((ticket) => {
           const priorityLabel =
             ticket.priorityLabel || (ticket.priority === 1 ? 'Urgent' : ticket.priority === 2 ? 'High' : ticket.priority === 3 ? 'Medium' : ticket.priority === 4 ? 'Low' : 'None');
@@ -245,13 +279,14 @@ export function TicketsView({
               style={{
                 backgroundColor: 'var(--bg-secondary)',
                 border: '1px solid var(--border-subtle)',
-                borderRadius: 'var(--radius-md)',
-                padding: '1rem 1.25rem',
+                borderRadius: 'var(--radius-sm)',
+                padding: '0.85rem 1rem',
                 display: 'flex',
+                flexWrap: 'wrap',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                gap: '1rem',
-                transition: 'all 0.15s ease',
+                gap: '0.75rem',
+                transition: 'border-color 0.15s ease, background-color 0.15s ease',
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.borderColor = 'var(--border-default)';
@@ -262,69 +297,82 @@ export function TicketsView({
                 e.currentTarget.style.backgroundColor = 'var(--bg-secondary)';
               }}
             >
-              {/* Ticket Information */}
+              {/* Ticket Meta & Title */}
               <div
-                style={{ flex: 1, cursor: 'pointer' }}
+                style={{ flex: 1, minWidth: '240px', cursor: 'pointer' }}
                 onClick={() => onSelectTicket(ticket)}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.35rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
                   <span
                     style={{
                       fontFamily: 'var(--font-mono)',
-                      fontSize: '0.78rem',
-                      fontWeight: 700,
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
                       color: 'var(--accent-primary)',
                       backgroundColor: 'var(--accent-subtle)',
-                      padding: '0.15rem 0.5rem',
-                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--accent-border)',
+                      padding: '0.1rem 0.45rem',
+                      borderRadius: 'var(--radius-xs)',
                     }}
                   >
                     {ticket.identifier}
                   </span>
+
                   <span
                     style={{
-                      fontSize: '0.72rem',
+                      fontSize: '0.7rem',
                       backgroundColor: 'var(--bg-elevated)',
-                      padding: '0.15rem 0.5rem',
-                      borderRadius: 'var(--radius-full)',
+                      padding: '0.1rem 0.45rem',
+                      borderRadius: 'var(--radius-xs)',
                       color: 'var(--text-secondary)',
-                      fontWeight: 600,
+                      border: '1px solid var(--border-subtle)',
+                      fontWeight: 500,
                     }}
                   >
                     {ticket.state?.name || 'Backlog'}
                   </span>
+
                   <span
                     style={{
-                      fontSize: '0.72rem',
+                      fontSize: '0.7rem',
                       color: ticket.priority === 1 ? 'var(--danger)' : 'var(--text-muted)',
-                      fontWeight: 500,
+                      fontFamily: 'var(--font-mono)',
                     }}
                   >
                     {priorityLabel}
                   </span>
+
                   {ticket.comments.length > 0 && (
                     <span
                       style={{
                         display: 'flex',
                         alignItems: 'center',
                         gap: '0.2rem',
-                        fontSize: '0.72rem',
+                        fontSize: '0.7rem',
                         color: 'var(--text-muted)',
+                        fontFamily: 'var(--font-mono)',
                       }}
                     >
-                      <MessageSquare size={12} />
+                      <MessageSquare size={11} />
                       <span>{ticket.comments.length}</span>
                     </span>
                   )}
                 </div>
 
-                <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.35rem' }}>
+                <div
+                  style={{
+                    fontSize: '0.88rem',
+                    fontWeight: 500,
+                    color: 'var(--text-primary)',
+                    marginBottom: '0.25rem',
+                  }}
+                >
                   {ticket.title}
                 </div>
 
                 {/* Labels */}
                 {ticket.labels.length > 0 && (
-                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
                     {ticket.labels.map((l) => (
                       <span
                         key={l.id}
@@ -332,8 +380,10 @@ export function TicketsView({
                           fontSize: '0.68rem',
                           backgroundColor: 'var(--bg-elevated)',
                           color: 'var(--text-muted)',
-                          padding: '0.05rem 0.4rem',
-                          borderRadius: 'var(--radius-full)',
+                          padding: '0.05rem 0.35rem',
+                          borderRadius: 'var(--radius-xs)',
+                          border: '1px solid var(--border-subtle)',
+                          fontFamily: 'var(--font-mono)',
                         }}
                       >
                         {l.name}
@@ -344,40 +394,49 @@ export function TicketsView({
               </div>
 
               {/* Actions */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                  flexShrink: 0,
+                }}
+              >
                 <button
                   onClick={() => onSelectTicket(ticket)}
                   style={{
-                    padding: '0.5rem 0.85rem',
-                    borderRadius: 'var(--radius-sm)',
+                    padding: '0.4rem 0.75rem',
+                    borderRadius: 'var(--radius-xs)',
                     border: '1px solid var(--border-default)',
                     color: 'var(--text-secondary)',
-                    fontSize: '0.82rem',
+                    fontSize: '0.78rem',
                     fontWeight: 500,
+                    backgroundColor: 'var(--bg-tertiary)',
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = '#fff')}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
                   onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
                 >
-                  View Details
+                  Details
                 </button>
+
                 <button
                   onClick={() => onStartPlanning(ticket)}
                   style={{
-                    display: 'flex',
+                    display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '0.45rem',
-                    padding: '0.5rem 1rem',
-                    borderRadius: 'var(--radius-sm)',
-                    backgroundColor: 'var(--accent-primary)',
-                    color: '#fff',
-                    fontSize: '0.82rem',
+                    gap: '0.35rem',
+                    padding: '0.4rem 0.85rem',
+                    borderRadius: 'var(--radius-xs)',
+                    backgroundColor: 'var(--text-primary)',
+                    color: 'var(--bg-primary)',
+                    fontSize: '0.78rem',
                     fontWeight: 600,
-                    boxShadow: '0 0 12px var(--accent-glow)',
+                    transition: 'opacity 0.15s ease',
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--accent-primary-hover)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--accent-primary)')}
+                  onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
                 >
-                  <Sparkles size={14} />
+                  <Terminal size={12} strokeWidth={2.5} />
                   <span>Plan</span>
                 </button>
               </div>

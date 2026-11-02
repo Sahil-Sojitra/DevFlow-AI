@@ -9,6 +9,7 @@ import {
   KeyRound,
   FileCode,
   HardDrive,
+  GitBranch,
 } from 'lucide-react';
 
 interface SettingsViewProps {
@@ -29,12 +30,14 @@ interface SettingsViewProps {
 
 export function SettingsView({ statusData }: SettingsViewProps) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       {/* Header */}
       <div>
-        <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#fff' }}>Environment & Settings</h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-          Validated server configuration and active safety boundaries. All secrets remain strictly on the server.
+        <h1 style={{ fontSize: '1.25rem', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
+          Environment & Settings
+        </h1>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+          Validated server configuration and active safety boundaries. All secrets remain strictly on the local machine.
         </p>
       </div>
 
@@ -43,70 +46,104 @@ export function SettingsView({ statusData }: SettingsViewProps) {
         style={{
           backgroundColor: 'var(--bg-secondary)',
           border: '1px solid var(--border-subtle)',
-          borderRadius: 'var(--radius-md)',
-          padding: '1.25rem',
+          borderRadius: 'var(--radius-sm)',
+          padding: '1rem',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-          <Shield size={18} color="var(--success)" />
-          <h2 style={{ fontSize: '1rem', fontWeight: 600, color: '#fff' }}>Security & Containment Policies</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.75rem' }}>
+          <Shield size={16} color="var(--success)" />
+          <h2 style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-primary)' }}>Security & Containment Policies</h2>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
-          <div style={{ backgroundColor: 'var(--bg-primary)', padding: '0.85rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#fff', marginBottom: '0.2rem' }}>Localhost Only</div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>The server binds strictly to 127.0.0.1. No external or public network exposure.</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.65rem' }}>
+          <div style={{ backgroundColor: 'var(--bg-primary)', padding: '0.75rem 0.85rem', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ fontWeight: 600, fontSize: '0.78rem', color: 'var(--text-primary)', marginBottom: '0.2rem', fontFamily: 'var(--font-mono)' }}>
+              LOCAL-FIRST RUNTIME
+            </div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+              Next.js server binds strictly to 127.0.0.1:4000. No external or public port forwarding.
+            </div>
           </div>
-          <div style={{ backgroundColor: 'var(--bg-primary)', padding: '0.85rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#fff', marginBottom: '0.2rem' }}>Secret Redaction</div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>LINEAR_API_KEY and local env variables are scrubbed before reaching the browser or Antigravity.</div>
+
+          <div style={{ backgroundColor: 'var(--bg-primary)', padding: '0.75rem 0.85rem', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ fontWeight: 600, fontSize: '0.78rem', color: 'var(--text-primary)', marginBottom: '0.2rem', fontFamily: 'var(--font-mono)' }}>
+              SECRET REDACTION
+            </div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+              API keys and local env secrets are scrubbed before reaching the browser or Antigravity prompts.
+            </div>
           </div>
-          <div style={{ backgroundColor: 'var(--bg-primary)', padding: '0.85rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#fff', marginBottom: '0.2rem' }}>No Automatic Writes</div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Read-only planning only. Plan approval does NOT trigger code changes or git commits.</div>
+
+          <div style={{ backgroundColor: 'var(--bg-primary)', padding: '0.75rem 0.85rem', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ fontWeight: 600, fontSize: '0.78rem', color: 'var(--text-primary)', marginBottom: '0.2rem', fontFamily: 'var(--font-mono)' }}>
+              HUMAN-AUTHORIZED ACTIONS
+            </div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+              Execution runs, remote branch pushes, and merges require explicit human confirmation.
+            </div>
           </div>
-          <div style={{ backgroundColor: 'var(--bg-primary)', padding: '0.85rem 1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#fff', marginBottom: '0.2rem' }}>Repository Allowlist</div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Arbitrary filesystem path submissions are rejected by the server registry.</div>
+
+          <div style={{ backgroundColor: 'var(--bg-primary)', padding: '0.75rem 0.85rem', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border-subtle)' }}>
+            <div style={{ fontWeight: 600, fontSize: '0.78rem', color: 'var(--text-primary)', marginBottom: '0.2rem', fontFamily: 'var(--font-mono)' }}>
+              PATH CONTAINMENT
+            </div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+              Operations are strictly verified against DEVFLOW_ALLOWED_WORKING_DIRS. Path traversal is blocked.
+            </div>
           </div>
         </div>
       </div>
 
       {/* Integration Status Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '0.85rem' }}>
         {/* Antigravity CLI */}
         <div
           style={{
             backgroundColor: 'var(--bg-secondary)',
             border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-md)',
-            padding: '1.25rem',
+            borderRadius: 'var(--radius-sm)',
+            padding: '1rem',
             display: 'flex',
             flexDirection: 'column',
-            gap: '0.75rem',
+            gap: '0.65rem',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Cpu size={18} color="var(--accent-primary)" />
-              <span style={{ fontWeight: 600, color: '#fff' }}>Antigravity CLI</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+              <Cpu size={16} color="var(--accent-primary)" />
+              <span style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)' }}>Antigravity CLI</span>
             </div>
-            <span style={{ fontSize: '0.75rem', backgroundColor: 'var(--success-subtle)', color: 'var(--success)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', fontWeight: 600 }}>
+            <span
+              style={{
+                fontSize: '0.7rem',
+                fontFamily: 'var(--font-mono)',
+                backgroundColor: statusData?.antigravity?.existsOnDisk ? 'var(--success-subtle)' : 'var(--danger-subtle)',
+                border: `1px solid ${statusData?.antigravity?.existsOnDisk ? 'var(--success-border)' : 'var(--danger-border)'}`,
+                color: statusData?.antigravity?.existsOnDisk ? 'var(--success)' : 'var(--danger)',
+                padding: '0.1rem 0.45rem',
+                borderRadius: 'var(--radius-xs)',
+                fontWeight: 500,
+              }}
+            >
               {statusData?.antigravity?.existsOnDisk ? 'Verified' : 'Missing'}
             </span>
           </div>
 
           <div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Binary Path</span>
-            <span style={{ fontSize: '0.8rem', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', fontFamily: 'var(--font-mono)' }}>
+              BINARY PATH
+            </span>
+            <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>
               {statusData?.antigravity?.binaryPath || 'Not set'}
             </span>
           </div>
 
           <div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Execution Mode</span>
-            <span style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>
-              Non-interactive (<code>--print</code> with structured JSON)
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', fontFamily: 'var(--font-mono)' }}>
+              EXECUTION MODE
+            </span>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
+              Non-interactive (--print json output)
             </span>
           </div>
         </div>
@@ -116,34 +153,49 @@ export function SettingsView({ statusData }: SettingsViewProps) {
           style={{
             backgroundColor: 'var(--bg-secondary)',
             border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-md)',
-            padding: '1.25rem',
+            borderRadius: 'var(--radius-sm)',
+            padding: '1rem',
             display: 'flex',
             flexDirection: 'column',
-            gap: '0.75rem',
+            gap: '0.65rem',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <KeyRound size={18} color="var(--info)" />
-              <span style={{ fontWeight: 600, color: '#fff' }}>Linear GraphQL API</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+              <KeyRound size={16} color="var(--info)" />
+              <span style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-primary)' }}>Linear GraphQL API</span>
             </div>
-            <span style={{ fontSize: '0.75rem', backgroundColor: statusData?.linear?.configured ? 'var(--success-subtle)' : 'var(--warning-subtle)', color: statusData?.linear?.configured ? 'var(--success)' : 'var(--warning)', padding: '0.15rem 0.5rem', borderRadius: 'var(--radius-full)', fontWeight: 600 }}>
-              {statusData?.linear?.configured ? 'Configured' : 'Missing Key'}
+            <span
+              style={{
+                fontSize: '0.7rem',
+                fontFamily: 'var(--font-mono)',
+                backgroundColor: statusData?.linear?.configured ? 'var(--success-subtle)' : 'var(--warning-subtle)',
+                border: `1px solid ${statusData?.linear?.configured ? 'var(--success-border)' : 'var(--warning-border)'}`,
+                color: statusData?.linear?.configured ? 'var(--success)' : 'var(--warning)',
+                padding: '0.1rem 0.45rem',
+                borderRadius: 'var(--radius-xs)',
+                fontWeight: 500,
+              }}
+            >
+              {statusData?.linear?.configured ? 'Connected' : 'Missing Key'}
             </span>
           </div>
 
           <div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Authenticated User</span>
-            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', fontFamily: 'var(--font-mono)' }}>
+              AUTHENTICATED VIEWER
+            </span>
+            <span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-primary)' }}>
               {statusData?.linear?.authenticatedUser?.name || 'N/A'} {statusData?.linear?.authenticatedUser?.email ? `(${statusData.linear.authenticatedUser.email})` : ''}
             </span>
           </div>
 
           <div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Permissions</span>
-            <span style={{ fontSize: '0.82rem', color: 'var(--text-primary)' }}>
-              Read-only queries (viewer & assigned issues)
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', fontFamily: 'var(--font-mono)' }}>
+              TWO-WAY CAPABILITIES
+            </span>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+              Issue queries · Workflow state sync · Run log comments
             </span>
           </div>
         </div>
@@ -154,16 +206,16 @@ export function SettingsView({ statusData }: SettingsViewProps) {
         style={{
           backgroundColor: 'var(--bg-secondary)',
           border: '1px solid var(--border-subtle)',
-          borderRadius: 'var(--radius-md)',
-          padding: '1.25rem',
+          borderRadius: 'var(--radius-sm)',
+          padding: '1rem',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-          <HardDrive size={18} color="var(--accent-primary)" />
-          <h2 style={{ fontSize: '0.95rem', fontWeight: 600, color: '#fff' }}>Local Plan Storage</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.65rem' }}>
+          <HardDrive size={15} color="var(--accent-primary)" />
+          <h2 style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-primary)' }}>Local Plan & Session Storage</h2>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', flexWrap: 'wrap', gap: '0.45rem' }}>
           <span style={{ color: 'var(--text-muted)' }}>Target Directory:</span>
           <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
             {statusData?.plansDirectory || 'data/plans'}

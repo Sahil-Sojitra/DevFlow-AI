@@ -697,74 +697,88 @@ export function ExecutionSessionsView({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', height: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', height: '100%' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#fff' }}>Work Sessions & Execution</h1>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+            <h1 style={{ fontSize: '1.25rem', fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
+              Work Sessions & Execution
+            </h1>
+            <span
+              className="mono-chip"
+              style={{
+                fontSize: '0.7rem',
+                padding: '0.1rem 0.45rem',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              {sessions.length} total
+            </span>
+          </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
             Monitor implementation runs, inspect Git changes, and review verification results.
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            fetchSessions();
-            if (selectedSessionId) fetchSessionDetail(selectedSessionId);
-          }}
-          style={{
-            padding: '0.45rem 0.85rem',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--border-subtle)',
-            backgroundColor: 'var(--bg-secondary)',
-            color: 'var(--text-secondary)',
-            fontSize: '0.8rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.4rem',
-            cursor: 'pointer',
-          }}
-        >
-          <RotateCcw size={14} />
-          <span>Refresh</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {sessionDetail && ['queued', 'running', 'verifying'].includes(sessionDetail.status) && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                padding: '0.35rem 0.65rem',
+                borderRadius: 'var(--radius-xs)',
+                backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                border: '1px solid rgba(34, 197, 94, 0.35)',
+                color: '#86efac',
+                fontSize: '0.72rem',
+                fontFamily: 'var(--font-mono)',
+                fontWeight: 500,
+              }}
+            >
+              <span
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--success)',
+                  display: 'inline-block',
+                }}
+              />
+              <span>SSE STREAMING</span>
+            </div>
+          )}
 
-        {sessionDetail && ['queued', 'running', 'verifying'].includes(sessionDetail.status) && (
-          <div
+          <button
+            onClick={() => {
+              fetchSessions();
+              if (selectedSessionId) fetchSessionDetail(selectedSessionId);
+            }}
             style={{
-              display: 'flex',
+              padding: '0.4rem 0.75rem',
+              borderRadius: 'var(--radius-xs)',
+              border: '1px solid var(--border-default)',
+              backgroundColor: 'var(--bg-secondary)',
+              color: 'var(--text-secondary)',
+              fontSize: '0.78rem',
+              display: 'inline-flex',
               alignItems: 'center',
-              gap: '0.45rem',
-              padding: '0.35rem 0.75rem',
-              borderRadius: 'var(--radius-sm)',
-              backgroundColor: 'rgba(34, 197, 94, 0.1)',
-              border: '1px solid rgba(34, 197, 94, 0.35)',
-              color: '#86efac',
-              fontSize: '0.75rem',
-              fontWeight: 600,
+              gap: '0.35rem',
+              cursor: 'pointer',
             }}
           >
-            <span
-              style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                backgroundColor: 'var(--success)',
-                display: 'inline-block',
-                boxShadow: '0 0 8px var(--success)',
-              }}
-            />
-            <span>Live Log Streaming Active</span>
-          </div>
-        )}
+            <RotateCcw size={13} />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
       {/* Main Grid: Master List + Detail Pane */}
       <div
+        className="sessions-layout"
         style={{
-          display: 'grid',
-          gridTemplateColumns: '320px 1fr',
-          gap: '1.5rem',
           minHeight: '620px',
         }}
       >

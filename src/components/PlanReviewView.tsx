@@ -16,6 +16,7 @@ import {
   AlertCircle,
   Plus,
   Play,
+  Terminal,
 } from 'lucide-react';
 import type { LinearIssue } from '@/types/linear';
 import type { RepositoryInfo } from '@/services/repo-registry';
@@ -268,12 +269,37 @@ export function PlanReviewView({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
       {/* Header */}
       <div>
-        <h1 style={{ fontSize: '1.4rem', fontWeight: 700, color: '#fff' }}>Plan Generation & Review</h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-          Combine selected Linear issue requirements with local repository context to create and approve an Antigravity plan.
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+          <h1
+            style={{
+              fontSize: '1.25rem',
+              fontWeight: 600,
+              letterSpacing: '-0.02em',
+              color: 'var(--text-primary)',
+            }}
+          >
+            Plan Generation & Review
+          </h1>
+          {planDetail && (
+            <span
+              className="mono-chip"
+              style={{
+                fontSize: '0.7rem',
+                padding: '0.1rem 0.45rem',
+                color: 'var(--accent-primary)',
+                border: '1px solid var(--accent-border)',
+                backgroundColor: 'var(--accent-subtle)',
+              }}
+            >
+              {planDetail.issueIdentifier}
+            </span>
+          )}
+        </div>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+          Combine selected Linear issue requirements with local repository context to formulate an Antigravity plan.
         </p>
       </div>
 
@@ -282,31 +308,32 @@ export function PlanReviewView({
         style={{
           backgroundColor: 'var(--bg-secondary)',
           border: '1px solid var(--border-subtle)',
-          borderRadius: 'var(--radius-md)',
-          padding: '1.25rem',
+          borderRadius: 'var(--radius-sm)',
+          padding: '1rem',
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: '1.25rem',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+          gap: '1rem',
         }}
       >
         {/* Ticket Picker */}
         <div>
-          <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.45rem' }}>
-            Linear Issue
+          <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.4rem', fontFamily: 'var(--font-mono)' }}>
+            LINEAR ISSUE
           </label>
           <select
             value={selectedIssueId}
             onChange={(e) => setSelectedIssueId(e.target.value)}
             style={{
               width: '100%',
-              padding: '0.6rem 0.75rem',
-              borderRadius: 'var(--radius-sm)',
+              padding: '0.5rem 0.65rem',
+              borderRadius: 'var(--radius-xs)',
               border: '1px solid var(--border-default)',
               backgroundColor: 'var(--bg-primary)',
               color: 'var(--text-primary)',
-              fontSize: '0.88rem',
+              fontSize: '0.82rem',
               outline: 'none',
               cursor: 'pointer',
+              fontFamily: 'var(--font-mono)',
             }}
           >
             {tickets.map((t) => (
@@ -327,9 +354,9 @@ export function PlanReviewView({
 
         {/* Repository Picker */}
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem' }}>
-            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              Target Repository (Whitelisted)
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+              TARGET REPOSITORY
             </label>
             <button
               type="button"
@@ -338,26 +365,27 @@ export function PlanReviewView({
                 setAddRepoError(null);
               }}
               style={{
-                fontSize: '0.75rem',
+                fontSize: '0.72rem',
                 color: 'var(--accent-primary)',
-                fontWeight: 600,
+                fontWeight: 500,
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.25rem',
+                gap: '0.2rem',
                 cursor: 'pointer',
+                fontFamily: 'var(--font-mono)',
               }}
             >
-              <Plus size={13} />
-              <span>{showAddRepo ? 'Cancel' : '+ Add Local Repo'}</span>
+              <Plus size={12} />
+              <span>{showAddRepo ? 'Cancel' : '+ Add Path'}</span>
             </button>
           </div>
 
           {showAddRepo && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.75rem' }}>
-              <div style={{ display: 'flex', gap: '0.4rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.65rem' }}>
+              <div style={{ display: 'flex', gap: '0.35rem' }}>
                 <input
                   type="text"
-                  placeholder="Paste local path (e.g. d:\D drive\Sobha\RFI\fe-rfi-classification)"
+                  placeholder="Paste local path (e.g. d:\projects\my-app)"
                   value={newRepoInput}
                   onChange={(e) => setNewRepoInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -368,13 +396,14 @@ export function PlanReviewView({
                   }}
                   style={{
                     flex: 1,
-                    padding: '0.45rem 0.65rem',
-                    borderRadius: 'var(--radius-sm)',
+                    padding: '0.4rem 0.6rem',
+                    borderRadius: 'var(--radius-xs)',
                     border: '1px solid var(--border-default)',
                     backgroundColor: 'var(--bg-primary)',
                     color: 'var(--text-primary)',
-                    fontSize: '0.82rem',
+                    fontSize: '0.78rem',
                     outline: 'none',
+                    fontFamily: 'var(--font-mono)',
                   }}
                 />
                 <button
@@ -382,22 +411,22 @@ export function PlanReviewView({
                   onClick={handleAddRepo}
                   disabled={addingRepo || !newRepoInput.trim()}
                   style={{
-                    padding: '0.45rem 0.85rem',
-                    borderRadius: 'var(--radius-sm)',
-                    backgroundColor: 'var(--accent-primary)',
-                    color: '#fff',
-                    fontSize: '0.8rem',
+                    padding: '0.4rem 0.75rem',
+                    borderRadius: 'var(--radius-xs)',
+                    backgroundColor: 'var(--text-primary)',
+                    color: 'var(--bg-primary)',
+                    fontSize: '0.78rem',
                     fontWeight: 600,
                     opacity: addingRepo || !newRepoInput.trim() ? 0.6 : 1,
                     cursor: 'pointer',
                     whiteSpace: 'nowrap',
                   }}
                 >
-                  {addingRepo ? 'Validating...' : 'Add & Select'}
+                  {addingRepo ? 'Validating...' : 'Add'}
                 </button>
               </div>
               {addRepoError && (
-                <div style={{ fontSize: '0.75rem', color: 'var(--danger)' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--danger)', fontFamily: 'var(--font-mono)' }}>
                   {addRepoError}
                 </div>
               )}
@@ -409,14 +438,15 @@ export function PlanReviewView({
             onChange={(e) => setSelectedRepoPath(e.target.value)}
             style={{
               width: '100%',
-              padding: '0.6rem 0.75rem',
-              borderRadius: 'var(--radius-sm)',
+              padding: '0.5rem 0.65rem',
+              borderRadius: 'var(--radius-xs)',
               border: '1px solid var(--border-default)',
               backgroundColor: 'var(--bg-primary)',
               color: 'var(--text-primary)',
-              fontSize: '0.88rem',
+              fontSize: '0.82rem',
               outline: 'none',
               cursor: 'pointer',
+              fontFamily: 'var(--font-mono)',
             }}
           >
             {repositories.map((repo) => (
@@ -433,28 +463,31 @@ export function PlanReviewView({
         <div
           style={{
             backgroundColor: currentRepo.hasUncommittedChanges ? 'var(--warning-subtle)' : 'var(--bg-secondary)',
-            border: `1px solid ${currentRepo.hasUncommittedChanges ? 'var(--warning)' : 'var(--border-subtle)'}`,
-            borderRadius: 'var(--radius-sm)',
-            padding: '0.75rem 1rem',
+            border: `1px solid ${currentRepo.hasUncommittedChanges ? 'var(--warning-border)' : 'var(--border-subtle)'}`,
+            borderRadius: 'var(--radius-xs)',
+            padding: '0.65rem 0.85rem',
             display: 'flex',
+            flexWrap: 'wrap',
             alignItems: 'center',
             justifyContent: 'space-between',
-            fontSize: '0.82rem',
+            gap: '0.5rem',
+            fontSize: '0.78rem',
+            fontFamily: 'var(--font-mono)',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-            <GitBranch size={15} color={currentRepo.hasUncommittedChanges ? 'var(--warning)' : 'var(--text-muted)'} />
-            <span style={{ color: 'var(--text-secondary)' }}>Branch:</span>
-            <span style={{ fontWeight: 600, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <GitBranch size={13} color={currentRepo.hasUncommittedChanges ? 'var(--warning)' : 'var(--text-muted)'} />
+            <span style={{ color: 'var(--text-muted)' }}>Active Branch:</span>
+            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
               {currentRepo.branch}
             </span>
           </div>
 
           {currentRepo.hasUncommittedChanges && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--warning)', fontWeight: 500 }}>
-              <AlertTriangle size={14} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--warning)', fontWeight: 500 }}>
+              <AlertTriangle size={13} />
               <span>
-                Warning: Repository has {currentRepo.uncommittedCount} uncommitted change(s).
+                {currentRepo.uncommittedCount} uncommitted change(s) present.
               </span>
             </div>
           )}
@@ -465,43 +498,45 @@ export function PlanReviewView({
       <div
         style={{
           display: 'flex',
+          flexWrap: 'wrap',
           alignItems: 'center',
           justifyContent: 'space-between',
+          gap: '0.75rem',
           backgroundColor: 'var(--bg-secondary)',
           border: '1px solid var(--border-subtle)',
-          borderRadius: 'var(--radius-md)',
-          padding: '1rem 1.25rem',
+          borderRadius: 'var(--radius-sm)',
+          padding: '0.85rem 1rem',
         }}
       >
         <div>
-          <div style={{ fontWeight: 600, fontSize: '0.92rem', color: '#fff' }}>
+          <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>
             {planDetail ? `Plan for ${selectedIssueId} exists` : `No plan for ${selectedIssueId} yet`}
           </div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
             {planDetail
-              ? `Generated on ${new Date(planDetail.generatedAt).toLocaleString()} (${planDetail.branch})`
-              : 'Click Generate to inspect codebase and formulate implementation steps'}
+              ? `Generated ${new Date(planDetail.generatedAt).toLocaleDateString()} (${planDetail.branch})`
+              : 'Click Generate to inspect repo context and formulate implementation tasks'}
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           {confirmOverwrite && (
             <button
               onClick={() => handleGenerate(true)}
               disabled={generating}
               style={{
-                padding: '0.55rem 1rem',
-                borderRadius: 'var(--radius-sm)',
+                padding: '0.45rem 0.85rem',
+                borderRadius: 'var(--radius-xs)',
                 backgroundColor: 'var(--danger)',
                 color: '#fff',
-                fontSize: '0.85rem',
+                fontSize: '0.78rem',
                 fontWeight: 600,
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
-                gap: '0.4rem',
+                gap: '0.35rem',
               }}
             >
-              <RotateCcw size={14} />
+              <RotateCcw size={13} />
               <span>Confirm Overwrite</span>
             </button>
           )}
@@ -510,21 +545,21 @@ export function PlanReviewView({
             onClick={() => handleGenerate(false)}
             disabled={generating}
             style={{
-              padding: '0.55rem 1.25rem',
-              borderRadius: 'var(--radius-sm)',
-              backgroundColor: 'var(--accent-primary)',
-              color: '#fff',
-              fontSize: '0.85rem',
+              padding: '0.45rem 1rem',
+              borderRadius: 'var(--radius-xs)',
+              backgroundColor: 'var(--text-primary)',
+              color: 'var(--bg-primary)',
+              fontSize: '0.78rem',
               fontWeight: 600,
-              display: 'flex',
+              display: 'inline-flex',
               alignItems: 'center',
-              gap: '0.5rem',
-              boxShadow: '0 0 14px var(--accent-glow)',
+              gap: '0.4rem',
               opacity: generating ? 0.7 : 1,
+              transition: 'opacity 0.15s ease',
             }}
           >
-            <Sparkles size={16} className={generating ? 'animate-spin' : ''} />
-            <span>{generating ? 'Synthesizing Plan...' : planDetail ? 'Regenerate Plan' : 'Generate Plan'}</span>
+            <Terminal size={13} className={generating ? 'animate-spin' : ''} />
+            <span>{generating ? 'Synthesizing...' : planDetail ? 'Regenerate Plan' : 'Generate Plan'}</span>
           </button>
         </div>
       </div>
@@ -584,7 +619,7 @@ export function PlanReviewView({
           style={{
             backgroundColor: 'var(--bg-secondary)',
             border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-md)',
+            borderRadius: 'var(--radius-sm)',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
@@ -593,35 +628,43 @@ export function PlanReviewView({
           {/* Plan Meta Banner & Review Controls */}
           <div
             style={{
-              padding: '1rem 1.5rem',
+              padding: '0.85rem 1.15rem',
               borderBottom: '1px solid var(--border-subtle)',
               backgroundColor: 'var(--bg-tertiary)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               flexWrap: 'wrap',
-              gap: '1rem',
+              gap: '0.75rem',
             }}
           >
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', marginBottom: '0.2rem' }}>
-                <span style={{ fontSize: '0.8rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 600, fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)' }}>
                   {planDetail.issueIdentifier}
                 </span>
                 <span
                   style={{
-                    fontSize: '0.75rem',
-                    fontWeight: 700,
+                    fontSize: '0.7rem',
+                    fontWeight: 600,
                     textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    padding: '0.15rem 0.55rem',
-                    borderRadius: 'var(--radius-full)',
+                    letterSpacing: '0.04em',
+                    fontFamily: 'var(--font-mono)',
+                    padding: '0.1rem 0.45rem',
+                    borderRadius: 'var(--radius-xs)',
                     backgroundColor:
                       planDetail.reviewStatus === 'approved'
                         ? 'var(--success-subtle)'
                         : planDetail.reviewStatus === 'rejected'
                         ? 'var(--danger-subtle)'
                         : 'var(--warning-subtle)',
+                    border: `1px solid ${
+                      planDetail.reviewStatus === 'approved'
+                        ? 'var(--success-border)'
+                        : planDetail.reviewStatus === 'rejected'
+                        ? 'var(--danger-border)'
+                        : 'var(--warning-border)'
+                    }`,
                     color:
                       planDetail.reviewStatus === 'approved'
                         ? 'var(--success)'
@@ -630,52 +673,53 @@ export function PlanReviewView({
                         : 'var(--warning)',
                   }}
                 >
-                  Status: {planDetail.reviewStatus}
+                  {planDetail.reviewStatus}
                 </span>
               </div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                Target repo: {planDetail.repository} (branch: {planDetail.branch})
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                Target: {planDetail.repository} ({planDetail.branch})
               </div>
             </div>
 
             {/* Approval / Rejection Actions & Implementation Execution */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
               <button
                 onClick={() => handleReview('rejected')}
                 style={{
-                  padding: '0.45rem 0.95rem',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--danger)',
+                  padding: '0.4rem 0.8rem',
+                  borderRadius: 'var(--radius-xs)',
+                  border: '1px solid var(--danger-border)',
+                  backgroundColor: 'transparent',
                   color: 'var(--danger)',
-                  fontSize: '0.82rem',
-                  fontWeight: 600,
-                  display: 'flex',
+                  fontSize: '0.78rem',
+                  fontWeight: 500,
+                  display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.35rem',
+                  gap: '0.3rem',
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--danger-subtle)')}
                 onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
               >
-                <X size={15} />
-                <span>Reject Plan</span>
+                <X size={13} />
+                <span>Reject</span>
               </button>
+
               <button
                 onClick={() => handleReview('approved')}
                 style={{
-                  padding: '0.45rem 1.15rem',
-                  borderRadius: 'var(--radius-sm)',
-                  backgroundColor: planDetail.reviewStatus === 'approved' ? 'rgba(34, 197, 94, 0.2)' : 'var(--success)',
-                  border: planDetail.reviewStatus === 'approved' ? '1px solid var(--success)' : 'none',
-                  color: '#fff',
-                  fontSize: '0.82rem',
+                  padding: '0.4rem 0.95rem',
+                  borderRadius: 'var(--radius-xs)',
+                  backgroundColor: planDetail.reviewStatus === 'approved' ? 'var(--success-subtle)' : 'var(--success)',
+                  border: planDetail.reviewStatus === 'approved' ? '1px solid var(--success-border)' : '1px solid var(--success)',
+                  color: planDetail.reviewStatus === 'approved' ? 'var(--success)' : '#000',
+                  fontSize: '0.78rem',
                   fontWeight: 600,
-                  display: 'flex',
+                  display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.35rem',
-                  boxShadow: '0 0 12px var(--success-subtle)',
+                  gap: '0.3rem',
                 }}
               >
-                <Check size={15} />
+                <Check size={13} />
                 <span>{planDetail.reviewStatus === 'approved' ? 'Approved' : 'Approve Plan'}</span>
               </button>
 
@@ -684,21 +728,23 @@ export function PlanReviewView({
                 <button
                   onClick={() => setShowExecutionModal(true)}
                   style={{
-                    padding: '0.45rem 1.25rem',
-                    borderRadius: 'var(--radius-sm)',
-                    backgroundColor: 'var(--accent-primary)',
-                    color: '#fff',
-                    fontSize: '0.82rem',
-                    fontWeight: 700,
-                    display: 'flex',
+                    padding: '0.4rem 1.05rem',
+                    borderRadius: 'var(--radius-xs)',
+                    backgroundColor: 'var(--text-primary)',
+                    color: 'var(--bg-primary)',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '0.45rem',
-                    boxShadow: '0 0 16px var(--accent-glow)',
+                    gap: '0.35rem',
                     border: 'none',
                     cursor: 'pointer',
+                    transition: 'opacity 0.15s ease',
                   }}
+                  onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
                 >
-                  <Play size={14} fill="#fff" />
+                  <Play size={12} fill="currentColor" />
                   <span>Start Implementation</span>
                 </button>
               )}
@@ -706,10 +752,10 @@ export function PlanReviewView({
           </div>
 
           {/* Optional Review Feedback Note */}
-          <div style={{ padding: '0.75rem 1.5rem', backgroundColor: 'var(--bg-primary)', borderBottom: '1px solid var(--border-subtle)' }}>
+          <div style={{ padding: '0.65rem 1.15rem', backgroundColor: 'var(--bg-primary)', borderBottom: '1px solid var(--border-subtle)' }}>
             <input
               type="text"
-              placeholder="Add optional developer notes or review feedback (persisted with decision)..."
+              placeholder="Developer feedback note (persisted with review decision)..."
               value={reviewNotes}
               onChange={(e) => setReviewNotes(e.target.value)}
               style={{
@@ -717,8 +763,9 @@ export function PlanReviewView({
                 backgroundColor: 'transparent',
                 border: 'none',
                 color: 'var(--text-primary)',
-                fontSize: '0.82rem',
+                fontSize: '0.8rem',
                 outline: 'none',
+                fontFamily: 'var(--font-mono)',
               }}
             />
           </div>
