@@ -7,6 +7,7 @@ import {
   detectBaseBranch,
   pullBaseBranch,
   mergeBranch,
+  createAndCheckoutBranch,
 } from '../../src/services/git-ops.js';
 import * as gitOps from '../../src/services/git-ops.js';
 
@@ -70,5 +71,13 @@ describe('Git Operations Service', () => {
     expect(res).toBeDefined();
     expect(typeof res.success).toBe('boolean');
     expect(typeof res.message).toBe('string');
+  });
+
+  it('handles createAndCheckoutBranch gracefully without unhandled exception', () => {
+    // Current working directory on existing branch
+    const res = createAndCheckoutBranch(process.cwd(), 'main');
+    expect(res).toBeDefined();
+    expect(typeof res.success).toBe('boolean');
+    expect(res.branch).toBe('main');
   });
 });

@@ -10,6 +10,7 @@ import {
   inspectGitWorkingTree,
   createGitWorktree,
   createGitWorktreeWithBranch,
+  createAndCheckoutBranch,
   detectBaseBranch,
   generateTicketBranchName,
   sanitizeBranchName,
@@ -106,7 +107,7 @@ export class ImplementationExecutor {
   public async startExecutionSession(
     params: CreateExecutionRequest
   ): Promise<ExecutionSessionRecord> {
-    const { issueIdentifier, useIsolation = true, branchOption, customBranchName } = params;
+    const { issueIdentifier, useIsolation = false, branchOption, customBranchName } = params;
 
     // 1. Pre-flight verification
     const { planDetail, targetRepo, gitStatus } = this.validateExecutionEligibility(params);
@@ -144,9 +145,8 @@ export class ImplementationExecutor {
     let isIsolated = false;
     let worktreePath: string | undefined;
 
-    // 3. Working tree isolation decision
+    // 3. Direct branch creation or optional worktree isolation
     if (!gitStatus.isClean) {
-      // Repository has uncommitted changes - MUST use isolation or block
       if (useIsolation) {
         try {
           const worktreeDir = path.join(targetRepo, '.devflow', 'worktrees', sessionId);
@@ -206,6 +206,16 @@ export class ImplementationExecutor {
         workingPath = targetRepo;
         isIsolated = false;
       }
+    } else {
+      // Direct branch mode: create & checkout ticket branch directly in repository (no worktree)
+      const branchRes = createAndCheckoutBranch(targetRepo, ticketBranch, baseBranch);
+      if (!branchRes.success) {
+        releaseLock();
+        throw new Error(branchRes.error || `Failed to create or checkout branch "${ticketBranch}".`);
+      }
+      workingPath = targetRepo;
+      isIsolated = false;
+      worktreePath = undefined;
     }
 
     // 4. Capture baseline state
@@ -223,7 +233,7 @@ export class ImplementationExecutor {
       workingPath,
       isIsolated,
       worktreePath,
-      branch: gitStatus.branch,
+      branch: workingTreeInspect.branch || ticketBranch,
       ticketBranch,
       baseBranch,
       mergeStatus: 'not_merged',
@@ -234,12 +244,12 @@ export class ImplementationExecutor {
       status: 'queued',
       progressMessage: isIsolated
         ? `Queued in isolated worktree on branch "${ticketBranch}" (base: ${baseBranch})`
-        : `Queued in main repository working tree on branch "${ticketBranch}"`,
+        : `Queued directly on branch "${ticketBranch}" (base: ${baseBranch})`,
       logs: [
         {
           timestamp: new Date().toISOString(),
           level: 'info',
-          message: `Session initialized for ${issueIdentifier}. Base branch: "${baseBranch}" (${pullInfo.message}). Ticket branch: "${ticketBranch}". Isolation: ${isIsolated ? 'active' : 'inactive'}.`,
+          message: `Session initialized for ${issueIdentifier}. Base branch: "${baseBranch}" (${pullInfo.message}). Ticket branch: "${ticketBranch}". Mode: ${isIsolated ? 'isolated worktree' : 'direct branch (no worktree)'}.`,
         },
       ],
       changedFiles: [],

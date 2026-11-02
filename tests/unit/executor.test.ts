@@ -49,6 +49,13 @@ describe('ImplementationExecutor', () => {
     vi.spyOn(gitOps, 'detectChangedFiles').mockReturnValue([
       { path: 'src/app.ts', status: 'modified', isPreExisting: false },
     ]);
+
+    vi.spyOn(gitOps, 'createAndCheckoutBranch').mockImplementation((_repo, branch) => ({
+      success: true,
+      branch,
+    }));
+
+    vi.spyOn(gitOps, 'commitWorktreeChanges').mockReturnValue('mock_commit_sha');
   });
 
   afterEach(() => {

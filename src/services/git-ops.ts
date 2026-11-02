@@ -259,6 +259,70 @@ export function createGitWorktreeWithBranch(
 }
 
 /**
+ * Creates and checks out a feature/ticket branch directly in the repository working tree (no worktree).
+ * If branch already exists, checks it out.
+ * If branch does not exist, creates and checks it out from baseBranch (or HEAD).
+ */
+export function createAndCheckoutBranch(
+  repoDir: string,
+  branchName: string,
+  baseBranch?: string
+): { success: boolean; branch: string; error?: string } {
+  try {
+    const currentBranch = runGit(['branch', '--show-current'], repoDir);
+    if (currentBranch === branchName) {
+      return { success: true, branch: branchName };
+    }
+
+    // Check if branch already exists locally
+    let branchExists = false;
+    try {
+      runGit(['rev-parse', '--verify', `refs/heads/${branchName}`], repoDir);
+      branchExists = true;
+    } catch {
+      branchExists = false;
+    }
+
+    if (branchExists) {
+      runGit(['checkout', branchName], repoDir);
+      return { success: true, branch: branchName };
+    }
+
+    // Branch does not exist, create from baseBranch if provided
+    if (baseBranch) {
+      let baseExistsLocally = false;
+      try {
+        runGit(['rev-parse', '--verify', `refs/heads/${baseBranch}`], repoDir);
+        baseExistsLocally = true;
+      } catch {
+        baseExistsLocally = false;
+      }
+
+      if (baseExistsLocally) {
+        runGit(['checkout', '-b', branchName, baseBranch], repoDir);
+      } else {
+        // Try origin/<baseBranch> or fallback to current HEAD
+        try {
+          runGit(['checkout', '-b', branchName, `origin/${baseBranch}`], repoDir);
+        } catch {
+          runGit(['checkout', '-b', branchName], repoDir);
+        }
+      }
+    } else {
+      runGit(['checkout', '-b', branchName], repoDir);
+    }
+
+    return { success: true, branch: branchName };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      branch: branchName,
+      error: `Failed to create/checkout branch "${branchName}": ${(err as Error).message}`,
+    };
+  }
+}
+
+/**
  * Commits all working tree or worktree changes with a descriptive message.
  */
 export function commitWorktreeChanges(worktreeDir: string, commitMessage: string): string | null {
