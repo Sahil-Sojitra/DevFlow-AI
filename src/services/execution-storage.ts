@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { EventEmitter } from 'node:events';
 import { getAppConfig, type AppConfig } from '../config/env.js';
 import {
   type ExecutionSessionRecord,
@@ -9,6 +10,22 @@ import {
   InvalidStateTransitionError,
 } from '../types/execution.js';
 import { redactSecrets } from './verification.js';
+
+export interface SessionStreamEvent {
+  type: 'init' | 'update' | 'log' | 'status' | 'terminal';
+  sessionId: string;
+  status: ExecutionSessionStatus;
+  progressMessage?: string;
+  log?: {
+    timestamp: string;
+    level: 'info' | 'warn' | 'error' | 'debug';
+    message: string;
+  };
+  session?: ExecutionSessionRecord;
+}
+
+export const sessionEventEmitter = new EventEmitter();
+sessionEventEmitter.setMaxListeners(200);
 
 export class ExecutionConcurrencyError extends Error {
   constructor(message: string) {
@@ -158,6 +175,16 @@ export class ExecutionStorageService {
 
     const filePath = this.getSessionFilePath(session.id);
     fs.writeFileSync(filePath, JSON.stringify(session, null, 2), 'utf8');
+
+    sessionEventEmitter.emit(`session:${session.id}`, {
+      type: ['completed', 'failed', 'cancelled', 'blocked'].includes(session.status)
+        ? 'terminal'
+        : 'update',
+      sessionId: session.id,
+      status: session.status,
+      progressMessage: session.progressMessage,
+      session,
+    } satisfies SessionStreamEvent);
   }
 
   /**

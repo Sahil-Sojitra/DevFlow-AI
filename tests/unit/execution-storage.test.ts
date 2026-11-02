@@ -4,6 +4,7 @@ import path from 'node:path';
 import {
   ExecutionStorageService,
   ExecutionConcurrencyError,
+  sessionEventEmitter,
 } from '../../src/services/execution-storage.js';
 import type { ExecutionSessionRecord } from '../../src/types/execution.js';
 
@@ -157,5 +158,26 @@ describe('ExecutionStorageService', () => {
     const lastLog = loaded?.logs[loaded.logs.length - 1];
     expect(lastLog?.message).not.toContain('lin_api_mySecretKey123');
     expect(lastLog?.message).toContain('[REDACTED_SECRET]');
+  });
+  it('emits real-time stream events via sessionEventEmitter when sessions update or logs are appended', () => {
+    const storage = new ExecutionStorageService(undefined, testSessionsDir);
+    const session = createMockSession('sess_stream_test', 'SAH-STREAM');
+
+    const receivedEvents: any[] = [];
+    const listener = (event: any) => {
+      receivedEvents.push(event);
+    };
+
+    sessionEventEmitter.on('session:sess_stream_test', listener);
+
+    storage.saveSession(session);
+    storage.appendLog('sess_stream_test', 'info', 'Step 1: starting compilation');
+
+    sessionEventEmitter.off('session:sess_stream_test', listener);
+
+    expect(receivedEvents.length).toBeGreaterThanOrEqual(2);
+    expect(receivedEvents[0].sessionId).toBe('sess_stream_test');
+    expect(receivedEvents[1].session?.logs).toBeDefined();
+    expect(receivedEvents[1].session?.logs[1]?.message).toContain('Step 1: starting compilation');
   });
 });

@@ -325,4 +325,116 @@ describe('LinearAdapter', () => {
       expect(msg).toContain('[REDACTED_API_KEY]');
     }
   });
+  it('creates a comment on a Linear issue', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: {
+          commentCreate: {
+            success: true,
+            comment: { id: 'comment_123' },
+          },
+        },
+      }),
+    });
+
+    const adapter = new LinearAdapter(mockConfig, mockFetch as any);
+    const res = await adapter.createComment('issue_1', 'DevFlow implementation started');
+    expect(res.success).toBe(true);
+    expect(res.commentId).toBe('comment_123');
+  });
+
+  it('updates workflow state when target state exists', async () => {
+    const mockFetch = vi.fn().mockImplementation((_url, options) => {
+      const body = JSON.parse(options.body);
+      if (body.query.includes('query IssueByIdOrIdentifier') || body.query.includes('IssueByFilter')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: {
+              issues: {
+                nodes: [
+                  {
+                    id: 'issue_1',
+                    identifier: 'SAH-1',
+                    title: 'Test',
+                    priority: 1,
+                    url: 'https://linear.app/issue/SAH-1',
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    state: { id: 'state_unstarted', name: 'Todo', type: 'unstarted' },
+                  },
+                ],
+              },
+            },
+          }),
+        });
+      }
+
+      if (body.query.includes('query IssueTeamStates')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: {
+              issues: {
+                nodes: [
+                  {
+                    id: 'issue_1',
+                    team: {
+                      states: {
+                        nodes: [
+                          { id: 'state_unstarted', name: 'Todo', type: 'unstarted' },
+                          { id: 'state_started', name: 'In Progress', type: 'started' },
+                          { id: 'state_review', name: 'In Review', type: 'started' },
+                          { id: 'state_completed', name: 'Done', type: 'completed' },
+                        ],
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          }),
+        });
+      }
+
+      if (body.query.includes('mutation UpdateIssueState')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: {
+              issueUpdate: {
+                success: true,
+                issue: {
+                  id: 'issue_1',
+                  identifier: 'SAH-1',
+                  state: { id: 'state_started', name: 'In Progress', type: 'started' },
+                },
+              },
+            },
+          }),
+        });
+      }
+
+      return Promise.reject(new Error('Unknown query'));
+    });
+
+    const adapter = new LinearAdapter(mockConfig, mockFetch as any);
+    const res = await adapter.updateIssueState('SAH-1', 'started');
+    expect(res.success).toBe(true);
+    expect(res.stateName).toBe('In Progress');
+  });
+
+  it('skips status sync gracefully when LINEAR_API_KEY is not configured', async () => {
+    const configWithoutKey = { ...mockConfig, linearApiKey: undefined };
+    const adapter = new LinearAdapter(configWithoutKey);
+
+    const res = await adapter.syncExecutionStatus('SAH-1', 'started');
+    expect(res.synced).toBe(false);
+    expect(res.message).toContain('Linear API key not configured');
+  });
 });

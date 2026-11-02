@@ -358,19 +358,64 @@ export function ExecutionSessionsView({
     }
   }, [activeTab, selectedSessionId, diffText, fetchDiff]);
 
-  // Polling for live session updates if running or verifying
+  // Real-time EventSource SSE streaming with fallback polling
   useEffect(() => {
-    if (!sessionDetail) return;
-    const isActive = ['queued', 'running', 'verifying'].includes(sessionDetail.status);
-    if (!isActive) return;
+    if (!selectedSessionId) return;
 
-    const interval = setInterval(() => {
-      fetchSessionDetail(sessionDetail.id);
-      fetchSessions();
-    }, 2500);
+    // Connect to SSE stream
+    const sseUrl = `/api/sessions/${selectedSessionId}/stream`;
+    let eventSource: EventSource | null = null;
+    let fallbackInterval: NodeJS.Timeout | null = null;
 
-    return () => clearInterval(interval);
-  }, [sessionDetail, fetchSessionDetail, fetchSessions]);
+    try {
+      eventSource = new EventSource(sseUrl);
+
+      eventSource.addEventListener('session', (event) => {
+        try {
+          const updatedSession = JSON.parse(event.data) as ExecutionSessionRecord;
+          setSessionDetail((prev) => {
+            if (!prev || prev.id === updatedSession.id) {
+              return updatedSession;
+            }
+            return prev;
+          });
+          // Refresh sessions list in background
+          fetchSessions();
+        } catch {
+          // Ignore parse errors
+        }
+      });
+
+      eventSource.onerror = () => {
+        // Close broken event source and fallback to interval polling
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+        }
+        if (!fallbackInterval) {
+          fallbackInterval = setInterval(() => {
+            fetchSessionDetail(selectedSessionId);
+            fetchSessions();
+          }, 3000);
+        }
+      };
+    } catch {
+      // EventSource not supported or failed
+      fallbackInterval = setInterval(() => {
+        fetchSessionDetail(selectedSessionId);
+        fetchSessions();
+      }, 3000);
+    }
+
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+      if (fallbackInterval) {
+        clearInterval(fallbackInterval);
+      }
+    };
+  }, [selectedSessionId, fetchSessionDetail, fetchSessions]);
 
   // Auto-scroll logs
   useEffect(() => {
@@ -604,6 +649,35 @@ export function ExecutionSessionsView({
           <RotateCcw size={14} />
           <span>Refresh</span>
         </button>
+
+        {sessionDetail && ['queued', 'running', 'verifying'].includes(sessionDetail.status) && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              padding: '0.35rem 0.75rem',
+              borderRadius: 'var(--radius-sm)',
+              backgroundColor: 'rgba(34, 197, 94, 0.1)',
+              border: '1px solid rgba(34, 197, 94, 0.35)',
+              color: '#86efac',
+              fontSize: '0.75rem',
+              fontWeight: 600,
+            }}
+          >
+            <span
+              style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                backgroundColor: 'var(--success)',
+                display: 'inline-block',
+                boxShadow: '0 0 8px var(--success)',
+              }}
+            />
+            <span>Live Log Streaming Active</span>
+          </div>
+        )}
       </div>
 
       {/* Main Grid: Master List + Detail Pane */}
@@ -843,6 +917,24 @@ export function ExecutionSessionsView({
                         <span className="animate-pulse" style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: getStatusColor(sessionDetail.status) }} />
                       )}
                       {sessionDetail.status}
+                    </span>
+
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        padding: '0.15rem 0.5rem',
+                        borderRadius: 'var(--radius-full)',
+                        backgroundColor: 'rgba(99, 102, 241, 0.12)',
+                        color: '#a5b4fc',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        fontWeight: 600,
+                      }}
+                      title="Linear issue state is synchronized two-way"
+                    >
+                      <Zap size={11} />
+                      <span>Linear 2-Way Sync</span>
                     </span>
 
                     {sessionDetail.isIsolated && (

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { getAppConfig, type AppConfig } from '../config/env.js';
 import { AntigravityAdapter } from '../adapters/antigravity.js';
+import { LinearAdapter } from '../adapters/linear.js';
 import { RepositoryRegistry } from './repo-registry.js';
 import { PlanStorageService } from './plan-storage.js';
 import { ExecutionStorageService } from './execution-storage.js';
@@ -35,6 +36,7 @@ import type {
 export interface ExecutorDependencies {
   config?: AppConfig;
   antigravityAdapter?: AntigravityAdapter;
+  linearAdapter?: LinearAdapter;
   repoRegistry?: RepositoryRegistry;
   planStorage?: PlanStorageService;
   executionStorage?: ExecutionStorageService;
@@ -47,6 +49,7 @@ export interface ExecutorDependencies {
 export class ImplementationExecutor {
   private readonly config: AppConfig;
   private readonly antigravity: AntigravityAdapter;
+  private readonly linear: LinearAdapter;
   private readonly repoRegistry: RepositoryRegistry;
   private readonly planStorage: PlanStorageService;
   private readonly executionStorage: ExecutionStorageService;
@@ -55,6 +58,7 @@ export class ImplementationExecutor {
   constructor(deps: ExecutorDependencies = {}) {
     this.config = deps.config ?? getAppConfig();
     this.antigravity = deps.antigravityAdapter ?? new AntigravityAdapter(this.config);
+    this.linear = deps.linearAdapter ?? new LinearAdapter(this.config);
     this.repoRegistry = deps.repoRegistry ?? new RepositoryRegistry(this.config);
     this.planStorage = deps.planStorage ?? new PlanStorageService(this.config);
     this.executionStorage = deps.executionStorage ?? new ExecutionStorageService(this.config);
@@ -263,6 +267,13 @@ export class ImplementationExecutor {
     };
 
     this.executionStorage.saveSession(initialSession);
+
+    // Two-way Linear status sync: transition issue to 'started' (In Progress) and post comment
+    this.linear
+      .syncExecutionStatus(issueIdentifier, 'started', {
+        comment: `🚀 **DevFlow AI** started autonomous implementation.\n- Base Branch: \`${baseBranch}\`\n- Ticket Branch: \`${ticketBranch}\`\n- Strategy: Direct repository branch mode`,
+      })
+      .catch(() => {});
 
     // 6. Launch background execution pipeline
     this.runPipeline(sessionId, planDetail.content, releaseLock).catch((pipelineErr) => {
@@ -591,6 +602,14 @@ ${planContent}
             ? `Implementation finished (${detectedChanges.length} file(s) modified) and ${configuredChecks.length} configured verification checks passed${autoFixAttempt > 0 ? ` after ${autoFixAttempt} autonomous fix pass(es)` : ''}.`
             : `Implementation finished (${detectedChanges.length} file(s) modified). Note: 0 verification checks were configured in package.json.`,
         });
+
+        // Two-way Linear status sync: transition issue to 'in_review'
+        const checksSummary = verificationResults.map((v) => `- [x] \`${v.name}\` (${v.status})`).join('\n');
+        this.linear
+          .syncExecutionStatus(session.issueIdentifier, 'in_review', {
+            comment: `✓ **DevFlow AI** completed implementation on branch \`${session.ticketBranch || session.branch}\`.\n\n### Automated Verification Results\n${checksSummary || '- All checks passed'}\n\n*Awaiting approval in DevFlow Dashboard.*`,
+          })
+          .catch(() => {});
       } else {
         // Failed after 3 attempts -> STUCK IN HALLUCINATION / UNABLE TO SOLVE
         this.executionStorage.appendLog(
@@ -935,6 +954,13 @@ ${feedback}
       `✓ Successfully merged branch "${sourceBranch}" into "${targetBranch}" (Commit: ${mergeResult.commitSha}).`
     );
 
+    // Two-way Linear status sync: transition issue to 'completed' (Done)
+    this.linear
+      .syncExecutionStatus(session.issueIdentifier, 'completed', {
+        comment: `🎉 **DevFlow AI** merged branch \`${sourceBranch}\` into \`${targetBranch}\` (Commit: \`${mergeResult.commitSha?.slice(0, 7)}\`).`,
+      })
+      .catch(() => {});
+
     return updated!;
   }
 
@@ -1108,6 +1134,15 @@ ${feedback}
         ? `Pull Request #${prNumber} created on ${remoteInfo?.provider || 'remote'}!`
         : `Branch pushed and Pull Request ready for review.`,
     });
+
+    // Two-way Linear status sync: link PR in Linear ticket
+    if (prUrl) {
+      this.linear
+        .syncExecutionStatus(session.issueIdentifier, 'in_review', {
+          comment: `🔗 **DevFlow AI** created/linked Pull Request: ${prUrl}${prNumber ? ` (#${prNumber})` : ''} on branch \`${sourceBranch}\`.`,
+        })
+        .catch(() => {});
+    }
 
     return {
       success: true,

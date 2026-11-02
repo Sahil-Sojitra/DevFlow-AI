@@ -630,6 +630,231 @@ export class LinearAdapter {
   }
 
   /**
+   * Adds a comment to a Linear issue.
+   */
+  public async createComment(
+    issueId: string,
+    body: string
+  ): Promise<{ success: boolean; commentId?: string }> {
+    if (!this.config.linearApiKey) {
+      return { success: false };
+    }
+
+    const mutation = `
+      mutation CreateComment($issueId: String!, $body: String!) {
+        commentCreate(input: { issueId: $issueId, body: $body }) {
+          success
+          comment {
+            id
+          }
+        }
+      }
+    `;
+
+    try {
+      const data = await this.executeGraphQL<{
+        commentCreate: { success: boolean; comment?: { id: string } };
+      }>({
+        query: mutation,
+        variables: { issueId, body },
+      });
+
+      return {
+        success: data.commentCreate.success,
+        commentId: data.commentCreate.comment?.id,
+      };
+    } catch {
+      return { success: false };
+    }
+  }
+
+  /**
+   * Fetches the workflow states available for an issue's team.
+   */
+  public async getWorkflowStatesForIssue(
+    issueIdentifierOrId: string
+  ): Promise<Array<{ id: string; name: string; type: string }>> {
+    if (!this.config.linearApiKey) {
+      return [];
+    }
+
+    const query = `
+      query IssueTeamStates($id: String!) {
+        issues(filter: { identifier: { eq: $id } }, first: 1) {
+          nodes {
+            id
+            team {
+              states {
+                nodes {
+                  id
+                  name
+                  type
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    try {
+      const data = await this.executeGraphQL<{
+        issues: {
+          nodes: Array<{
+            id: string;
+            team?: {
+              states?: {
+                nodes: Array<{ id: string; name: string; type: string }>;
+              };
+            };
+          }>;
+        };
+      }>({
+        query,
+        variables: { id: issueIdentifierOrId.trim() },
+      });
+
+      const issueNode = data.issues?.nodes?.[0];
+      return issueNode?.team?.states?.nodes ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Updates an issue's workflow state in Linear (e.g. to In Progress, In Review, Done).
+   */
+  public async updateIssueState(
+    issueIdentifierOrId: string,
+    targetTypeOrName: 'started' | 'in_review' | 'completed' | string
+  ): Promise<{ success: boolean; stateName?: string; error?: string }> {
+    if (!this.config.linearApiKey) {
+      return { success: false, error: 'Linear API key is not configured.' };
+    }
+
+    const trimmed = issueIdentifierOrId.trim();
+    const issue = await this.getIssue(trimmed);
+    if (!issue) {
+      return { success: false, error: `Issue "${trimmed}" not found in Linear.` };
+    }
+
+    const states = await this.getWorkflowStatesForIssue(trimmed);
+    if (states.length === 0) {
+      return { success: false, error: 'No workflow states found for this team.' };
+    }
+
+    // Match candidate state
+    let matchedState;
+
+    if (targetTypeOrName === 'started' || targetTypeOrName.toLowerCase().includes('progress')) {
+      matchedState = states.find(
+        (s) => s.type === 'started' || s.name.toLowerCase().includes('progress')
+      );
+    } else if (targetTypeOrName === 'in_review' || targetTypeOrName.toLowerCase().includes('review')) {
+      matchedState =
+        states.find((s) => s.name.toLowerCase().includes('review')) ||
+        states.find((s) => s.type === 'started');
+    } else if (targetTypeOrName === 'completed' || targetTypeOrName.toLowerCase().includes('done')) {
+      matchedState = states.find(
+        (s) => s.type === 'completed' || s.name.toLowerCase().includes('done')
+      );
+    } else {
+      matchedState = states.find(
+        (s) =>
+          s.name.toLowerCase() === targetTypeOrName.toLowerCase() ||
+          s.type.toLowerCase() === targetTypeOrName.toLowerCase()
+      );
+    }
+
+    if (!matchedState) {
+      return {
+        success: false,
+        error: `Could not find a matching state for "${targetTypeOrName}". Available: ${states.map((s) => s.name).join(', ')}`,
+      };
+    }
+
+    // Don't update if already in target state
+    if (issue.state && issue.state.id === matchedState.id) {
+      return { success: true, stateName: matchedState.name };
+    }
+
+    const mutation = `
+      mutation UpdateIssueState($id: String!, $stateId: String!) {
+        issueUpdate(id: $id, input: { stateId: $stateId }) {
+          success
+          issue {
+            id
+            identifier
+            state {
+              id
+              name
+              type
+            }
+          }
+        }
+      }
+    `;
+
+    try {
+      const data = await this.executeGraphQL<{
+        issueUpdate: {
+          success: boolean;
+          issue?: { state?: { name: string } };
+        };
+      }>({
+        query: mutation,
+        variables: { id: issue.id, stateId: matchedState.id },
+      });
+
+      return {
+        success: data.issueUpdate.success,
+        stateName: data.issueUpdate.issue?.state?.name || matchedState.name,
+      };
+    } catch (err) {
+      return {
+        success: false,
+        error: (err as Error).message,
+      };
+    }
+  }
+
+  /**
+   * High-level two-way status sync helper: transitions issue status and optionally leaves a comment.
+   */
+  public async syncExecutionStatus(
+    issueIdentifier: string,
+    event: 'started' | 'in_review' | 'completed',
+    options?: { comment?: string; branch?: string }
+  ): Promise<{ synced: boolean; stateName?: string; message?: string }> {
+    if (!this.config.linearApiKey) {
+      return { synced: false, message: 'Linear API key not configured. Status sync skipped.' };
+    }
+
+    try {
+      const stateRes = await this.updateIssueState(issueIdentifier, event);
+      if (options && options.comment) {
+        const issue = await this.getIssue(issueIdentifier);
+        if (issue) {
+          await this.createComment(issue.id, options.comment);
+        }
+      }
+
+      return {
+        synced: stateRes.success,
+        stateName: stateRes.stateName,
+        message: stateRes.success
+          ? `Linear issue ${issueIdentifier} synced to "${stateRes.stateName}".`
+          : stateRes.error,
+      };
+    } catch (err) {
+      return {
+        synced: false,
+        message: `Status sync failed: ${(err as Error).message}`,
+      };
+    }
+  }
+
+  /**
    * Internal helper to execute a GraphQL request with full safety and error mapping.
    */
   private async executeGraphQL<T>(params: {
