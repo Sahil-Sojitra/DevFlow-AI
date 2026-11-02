@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import fs from 'node:fs';
 import { getAppConfig } from '@/config/env';
 import { LinearAdapter } from '@/adapters/linear';
+import { ExecutionStorageService } from '@/services/execution-storage';
 
 export async function GET() {
   const config = getAppConfig();
@@ -24,6 +25,9 @@ export async function GET() {
     }
   }
 
+  const storage = new ExecutionStorageService();
+  const modelQuota = storage.getModelQuotaStatus();
+
   return NextResponse.json({
     status: 'ok',
     version: '0.3.0',
@@ -39,5 +43,6 @@ export async function GET() {
     },
     repositoriesCount: config.allowedWorkingDirs.length,
     plansDirectory: config.plansDir,
+    modelQuota,
   });
 }

@@ -8,6 +8,7 @@ export const AntigravityUsageSchema = z.object({
   output_tokens: z.number().optional(),
   thinking_tokens: z.number().optional(),
   cache_read_tokens: z.number().optional(),
+  cache_write_tokens: z.number().optional(),
   total_tokens: z.number().optional(),
 }).passthrough();
 

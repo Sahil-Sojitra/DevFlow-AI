@@ -446,11 +446,19 @@ ${planContent}
         );
       }
 
+      // Capture model usage and duration
+      const usage = execResult.parsedOutput?.usage;
+      const durationSeconds = Math.round(execResult.durationMs / 1000);
+      const model = process.env.DEVFLOW_MODEL || 'gemini-3.8-flash-high';
+
       // Transition to 'verifying'
       session = this.executionStorage.transitionSession(sessionId, 'verifying', {
         implementationCompleted: true,
         changedFiles: detectedChanges,
         progressMessage: 'Running configured verification pipeline (tests, typecheck, lint, build)...',
+        model,
+        usage,
+        durationSeconds,
       });
 
       // Automated Verification & Autonomous Self-Healing Loop (Up to 3 Attempts)
@@ -575,6 +583,24 @@ ${planContent}
             if (firstLine) {
               this.executionStorage.appendLog(sessionId, 'info', `[agy fix] ${firstLine}`);
             }
+          }
+
+          if (fixResult.parsedOutput?.usage) {
+            const u = fixResult.parsedOutput.usage;
+            const currentUsage = session.usage || {};
+            session.usage = {
+              input_tokens: (currentUsage.input_tokens || 0) + (u.input_tokens || 0),
+              output_tokens: (currentUsage.output_tokens || 0) + (u.output_tokens || 0),
+              thinking_tokens: (currentUsage.thinking_tokens || 0) + (u.thinking_tokens || 0),
+              cache_read_tokens: (currentUsage.cache_read_tokens || 0) + (u.cache_read_tokens || 0),
+              cache_write_tokens: (currentUsage.cache_write_tokens || 0) + (u.cache_write_tokens || 0),
+              total_tokens: (currentUsage.total_tokens || 0) + (u.total_tokens || 0),
+            };
+            session.durationSeconds = (session.durationSeconds || 0) + Math.round(fixResult.durationMs / 1000);
+            this.executionStorage.updateSession(sessionId, {
+              usage: session.usage,
+              durationSeconds: session.durationSeconds,
+            });
           }
         }
       }

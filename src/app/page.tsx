@@ -9,6 +9,9 @@ import { PlanReviewView } from '@/components/PlanReviewView';
 import { ExecutionSessionsView } from '@/components/ExecutionSessionsView';
 import { RepositoriesView } from '@/components/RepositoriesView';
 import { SettingsView } from '@/components/SettingsView';
+import { ModelQuotaBar } from '@/components/ModelQuotaBar';
+import { ModelQuotaModal } from '@/components/ModelQuotaModal';
+import type { ModelQuotaStatus } from '@/types/execution';
 import type { LinearIssue } from '@/types/linear';
 import type { RepositoryInfo } from '@/services/repo-registry';
 import type { SavedPlanSummary, SavedPlanDetail, ReviewStatus } from '@/services/plan-storage';
@@ -33,6 +36,23 @@ export default function DashboardPage() {
   const [targetPlanningTicket, setTargetPlanningTicket] = useState<LinearIssue | null>(null);
   const [targetPlanningPlan, setTargetPlanningPlan] = useState<SavedPlanSummary | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [modelQuota, setModelQuota] = useState<ModelQuotaStatus | null>(null);
+  const [quotaModalOpen, setQuotaModalOpen] = useState(false);
+
+  const fetchQuota = useCallback(async (sessionId?: string) => {
+    try {
+      const url = sessionId ? `/api/quota?sessionId=${encodeURIComponent(sessionId)}` : '/api/quota';
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.quota) {
+          setModelQuota(data.quota);
+        }
+      }
+    } catch {
+      // Ignore
+    }
+  }, []);
 
   // Fetch status
   const fetchStatus = useCallback(async () => {
@@ -41,6 +61,9 @@ export default function DashboardPage() {
       if (res.ok) {
         const data = await res.json();
         setStatusData(data);
+        if (data.modelQuota) {
+          setModelQuota(data.modelQuota);
+        }
       }
     } catch {
       // Ignore initial status fetch failure
@@ -112,7 +135,8 @@ export default function DashboardPage() {
     fetchPlans();
     fetchTickets();
     fetchSessions();
-  }, [fetchStatus, fetchRepositories, fetchPlans, fetchTickets, fetchSessions]);
+    fetchQuota();
+  }, [fetchStatus, fetchQuota, fetchRepositories, fetchPlans, fetchTickets, fetchSessions]);
 
   const handleStartPlanning = (ticket: LinearIssue) => {
     setTargetPlanningTicket(ticket);
@@ -309,6 +333,13 @@ export default function DashboardPage() {
           </div>
         </header>
 
+        {/* Antigravity Model & Token Limits Telemetry Bar (Persistent across all screens) */}
+        <ModelQuotaBar
+          quota={modelQuota}
+          onOpenDetails={() => setQuotaModalOpen(true)}
+          onRefresh={() => fetchQuota(selectedSessionId || undefined)}
+        />
+
         {/* Scrollable Main Viewport */}
         <main
           style={{
@@ -404,6 +435,14 @@ export default function DashboardPage() {
         ticket={inspectingTicket}
         onClose={() => setInspectingTicket(null)}
         onStartPlanning={handleStartPlanning}
+      />
+
+      {/* Model Limits & Token Telemetry Details Modal */}
+      <ModelQuotaModal
+        isOpen={quotaModalOpen}
+        onClose={() => setQuotaModalOpen(false)}
+        quota={modelQuota}
+        onRefresh={() => fetchQuota(selectedSessionId || undefined)}
       />
     </div>
   );

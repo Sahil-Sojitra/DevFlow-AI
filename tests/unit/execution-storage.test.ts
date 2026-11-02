@@ -180,4 +180,37 @@ describe('ExecutionStorageService', () => {
     expect(receivedEvents[1].session?.logs).toBeDefined();
     expect(receivedEvents[1].session?.logs[1]?.message).toContain('Step 1: starting compilation');
   });
+  it('computes Antigravity model quota telemetry including session and weekly token limits', () => {
+    const storage = new ExecutionStorageService(undefined, testSessionsDir);
+    const session = createMockSession('sess_quota_1', 'SAH-99');
+    session.model = 'gemini-3.8-flash-high';
+    session.usage = {
+      input_tokens: 15000,
+      output_tokens: 5000,
+      thinking_tokens: 2500,
+      cache_read_tokens: 1000,
+      total_tokens: 22500,
+    };
+    session.durationSeconds = 45;
+    session.status = 'running';
+    storage.saveSession(session);
+
+    const quota = storage.getModelQuotaStatus('sess_quota_1');
+    expect(quota).toBeDefined();
+    expect(quota.modelName).toBe('gemini-3.8-flash-high');
+    expect(quota.modelDisplayName).toBe('Gemini 3.8 Flash (High)');
+    expect(quota.contextWindow).toBe(1_000_000);
+    expect(quota.sessionLimitTokens).toBeGreaterThan(0);
+    expect(quota.weeklyLimitTokens).toBeGreaterThan(0);
+    expect(quota.currentSessionTokens).toBe(22500);
+    expect(quota.weeklyUsedTokens).toBe(22500);
+    expect(quota.sessionPercentUsed).toBe(Math.round((22500 / quota.sessionLimitTokens) * 100));
+    expect(quota.weeklyPercentUsed).toBe(Math.round((22500 / quota.weeklyLimitTokens) * 100));
+    expect(quota.daysUntilWeeklyReset).toBeGreaterThanOrEqual(1);
+    expect(quota.daysUntilWeeklyReset).toBeLessThanOrEqual(7);
+    expect(quota.ticketUsage?.issueIdentifier).toBe('SAH-99');
+    expect(quota.ticketUsage?.thinkingTokens).toBe(2500);
+    expect(quota.recentTicketsUsage.length).toBe(1);
+    expect(quota.recentTicketsUsage[0].issueIdentifier).toBe('SAH-99');
+  });
 });
