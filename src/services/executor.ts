@@ -28,6 +28,7 @@ import type {
   ExecutionSessionRecord,
   CreateExecutionRequest,
   CreatePullRequestInput,
+  MergeSessionInput,
   SessionRevision,
   VerificationResult,
   DiagnosticIssue,
@@ -935,7 +936,7 @@ ${feedback}
    */
   public mergeSession(
     sessionId: string,
-    options: { targetBranch?: string; commitMessage?: string } = {}
+    options: MergeSessionInput = {}
   ): ExecutionSessionRecord {
     const session = this.executionStorage.getSession(sessionId);
     if (!session) {
@@ -950,12 +951,20 @@ ${feedback}
 
     const sourceBranch = session.ticketBranch || session.branch;
     const targetBranch = options.targetBranch || session.baseBranch || detectBaseBranch(session.repositoryPath);
+    const remote = options.remote || 'origin';
+    const pushFeatureBranchFirst = options.pushFeatureBranchFirst !== false;
+    const pushBaseBranch = options.pushBaseBranch !== false;
 
     if (sourceBranch === targetBranch) {
       throw new Error(`Source branch and target branch are identical ("${targetBranch}"). Nothing to merge.`);
     }
 
-    // Ensure all changes in worktree are committed before merging
+    // Step 1: Ensure all changes in worktree / repo are committed to the ticket branch
+    this.executionStorage.appendLog(
+      sessionId,
+      'info',
+      `[git] Step 1/3: Committing uncommitted changes on ticket branch "${sourceBranch}"...`
+    );
     try {
       commitWorktreeChanges(
         session.workingPath,
@@ -965,6 +974,46 @@ ${feedback}
       // Ignore
     }
 
+    // Step 2: Push current ticket branch to remote first before merging
+    let featureBranchPushed = false;
+    if (pushFeatureBranchFirst) {
+      this.executionStorage.appendLog(
+        sessionId,
+        'info',
+        `[git] Step 2/3: Pushing current ticket branch "${sourceBranch}" to remote ("${remote}/${sourceBranch}")...`
+      );
+      this.executionStorage.updateSession(sessionId, {
+        progressMessage: `Pushing ticket branch "${sourceBranch}" to remote "${remote}"...`,
+      });
+
+      const pushResult = pushBranch(session.repositoryPath, sourceBranch, remote);
+      if (pushResult.success) {
+        featureBranchPushed = true;
+        this.executionStorage.appendLog(
+          sessionId,
+          'info',
+          `[git] ✓ Current ticket branch "${sourceBranch}" successfully pushed to remote ("${remote}/${sourceBranch}").`
+        );
+      } else if (pushResult.error?.includes('has no remotes configured')) {
+        this.executionStorage.appendLog(
+          sessionId,
+          'info',
+          `[git] Note: Repository has no remote configured. Skipping remote push for "${sourceBranch}".`
+        );
+      } else {
+        // Push failed with actual remote error
+        this.executionStorage.appendLog(
+          sessionId,
+          'error',
+          `[git] Failed to push ticket branch "${sourceBranch}" to "${remote}": ${pushResult.error || pushResult.message}`
+        );
+        throw new Error(
+          `Failed to push ticket branch "${sourceBranch}" to remote before merging: ${pushResult.error || pushResult.message}`
+        );
+      }
+    }
+
+    // Step 3: Merge ticket branch into base branch
     const commitMessage =
       options.commitMessage ||
       `feat(${session.issueIdentifier}): merge '${sourceBranch}' into ${targetBranch}`;
@@ -972,8 +1021,11 @@ ${feedback}
     this.executionStorage.appendLog(
       sessionId,
       'info',
-      `Merging ticket branch "${sourceBranch}" into target branch "${targetBranch}"...`
+      `[git] Step 3/3: Merging ticket branch "${sourceBranch}" into base branch "${targetBranch}"...`
     );
+    this.executionStorage.updateSession(sessionId, {
+      progressMessage: `Merging "${sourceBranch}" into "${targetBranch}"...`,
+    });
 
     const mergeResult = mergeBranch(
       session.repositoryPath,
@@ -989,28 +1041,52 @@ ${feedback}
       this.executionStorage.appendLog(
         sessionId,
         'error',
-        `Merge into "${targetBranch}" failed: ${mergeResult.error}`
+        `[git] Merge into "${targetBranch}" failed: ${mergeResult.error}`
       );
       throw new Error(mergeResult.error || `Failed to merge branch into "${targetBranch}".`);
+    }
+
+    this.executionStorage.appendLog(
+      sessionId,
+      'info',
+      `[git] ✓ Successfully merged branch "${sourceBranch}" into "${targetBranch}" (Commit: ${mergeResult.commitSha}).`
+    );
+
+    // Step 4 (optional): Push the updated base branch to remote
+    let baseBranchPushed = false;
+    if (pushBaseBranch) {
+      const pushBaseResult = pushBranch(session.repositoryPath, targetBranch, remote);
+      if (pushBaseResult.success) {
+        baseBranchPushed = true;
+        this.executionStorage.appendLog(
+          sessionId,
+          'info',
+          `[git] ✓ Updated base branch "${targetBranch}" successfully pushed to remote ("${remote}/${targetBranch}").`
+        );
+      } else if (pushBaseResult.error?.includes('has no remotes configured')) {
+        // No remote configured, ignore
+      } else {
+        this.executionStorage.appendLog(
+          sessionId,
+          'warn',
+          `[git] Warning: Merged locally, but could not push base branch "${targetBranch}" to "${remote}": ${pushBaseResult.error}`
+        );
+      }
     }
 
     const updated = this.executionStorage.updateSession(sessionId, {
       mergeStatus: 'merged',
       mergedAt: new Date().toISOString(),
       mergeCommitSha: mergeResult.commitSha,
-      progressMessage: `Branch "${sourceBranch}" successfully merged into "${targetBranch}" (${mergeResult.commitSha?.slice(0, 7)}).`,
+      progressMessage: featureBranchPushed
+        ? `Branch "${sourceBranch}" pushed to remote and merged into "${targetBranch}" (${mergeResult.commitSha?.slice(0, 7)}).`
+        : `Branch "${sourceBranch}" merged into "${targetBranch}" (${mergeResult.commitSha?.slice(0, 7)}).`,
     });
-
-    this.executionStorage.appendLog(
-      sessionId,
-      'info',
-      `✓ Successfully merged branch "${sourceBranch}" into "${targetBranch}" (Commit: ${mergeResult.commitSha}).`
-    );
 
     // Two-way Linear status sync: transition issue to 'completed' (Done)
     this.linear
       .syncExecutionStatus(session.issueIdentifier, 'completed', {
-        comment: `🎉 **DevFlow AI** merged branch \`${sourceBranch}\` into \`${targetBranch}\` (Commit: \`${mergeResult.commitSha?.slice(0, 7)}\`).`,
+        comment: `🎉 **DevFlow AI** pushed branch \`${sourceBranch}\` to remote and merged into \`${targetBranch}\` (Commit: \`${mergeResult.commitSha?.slice(0, 7)}\`).`,
       })
       .catch(() => {});
 

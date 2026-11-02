@@ -410,6 +410,11 @@ Step 1: Create auth middleware.
   it('merges completed session branch into base branch successfully', async () => {
     setupPlan('SAH-MERGE', 'approved');
 
+    const pushSpy = vi.spyOn(gitOps, 'pushBranch').mockReturnValue({
+      success: true,
+      message: 'Branch pushed successfully',
+    });
+
     vi.spyOn(gitOps, 'mergeBranch').mockReturnValue({
       success: true,
       commitSha: 'commit_merged_789',
@@ -451,9 +456,61 @@ Step 1: Create auth middleware.
     });
 
     const merged = executor.mergeSession('sess_merge_test');
+    expect(pushSpy).toHaveBeenCalledWith(allowedRepo, 'feat/sah-merge', 'origin');
     expect(merged.mergeStatus).toBe('merged');
     expect(merged.mergeCommitSha).toBe('commit_merged_789');
     expect(merged.mergedAt).toBeDefined();
+  });
+
+  it('enforces pushing current ticket branch to remote first before merging into base branch', async () => {
+    setupPlan('SAH-PUSH-FIRST', 'approved');
+
+    vi.spyOn(gitOps, 'pushBranch').mockReturnValue({
+      success: false,
+      message: 'Network error pushing branch',
+      error: 'Git push rejected by remote origin',
+    });
+    const mergeSpy = vi.spyOn(gitOps, 'mergeBranch');
+
+    const storage = new ExecutionStorageService(mockConfig, sessionsDir);
+    const executor = new ImplementationExecutor({
+      config: mockConfig,
+      repoRegistry: new RepositoryRegistry(mockConfig),
+      planStorage: new PlanStorageService(mockConfig),
+      executionStorage: storage,
+    });
+
+    storage.saveSession({
+      id: 'sess_push_first_test',
+      issueIdentifier: 'SAH-PUSH-FIRST',
+      issueTitle: 'Test Push Before Merge',
+      planFilePath: 'plans/SAH-PUSH-FIRST.md',
+      repositoryPath: allowedRepo,
+      workingPath: allowedRepo,
+      isIsolated: false,
+      branch: 'main',
+      ticketBranch: 'feat/sah-push-first',
+      baseBranch: 'main',
+      mergeStatus: 'not_merged',
+      baselineCommit: 'abc123456',
+      baselineDirtyCount: 0,
+      baselineFiles: [],
+      createdAt: new Date().toISOString(),
+      status: 'completed',
+      progressMessage: 'Completed',
+      logs: [],
+      changedFiles: [],
+      verificationResults: [],
+      implementationCompleted: true,
+      verificationPassed: true,
+      isDone: true,
+    });
+
+    expect(() =>
+      executor.mergeSession('sess_push_first_test', { pushFeatureBranchFirst: true })
+    ).toThrow('Failed to push ticket branch "feat/sah-push-first" to remote before merging');
+
+    expect(mergeSpy).not.toHaveBeenCalled();
   });
 
   it('rejects merge when session is not completed', async () => {

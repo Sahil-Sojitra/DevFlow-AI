@@ -25,6 +25,7 @@ import {
   Sparkles,
   Edit3,
   ArrowLeft,
+  ArrowRight,
   Loader2,
   X,
   Zap,
@@ -201,6 +202,11 @@ export function ExecutionSessionsView({
 
   // Phase 2: Merge and PR states
   const [mergingSession, setMergingSession] = useState(false);
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [mergeTargetBranch, setMergeTargetBranch] = useState('');
+  const [mergeCommitMsg, setMergeCommitMsg] = useState('');
+  const [pushFeatureBranchFirst, setPushFeatureBranchFirst] = useState(true);
+  const [pushBaseBranch, setPushBaseBranch] = useState(true);
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [mergeSuccess, setMergeSuccess] = useState<string | null>(null);
   const [showPrModal, setShowPrModal] = useState(false);
@@ -287,6 +293,20 @@ export function ExecutionSessionsView({
     }
   };
 
+  const openMergeModal = () => {
+    if (sessionDetail) {
+      const source = sessionDetail.ticketBranch || sessionDetail.branch;
+      const target = sessionDetail.baseBranch || 'main';
+      setMergeTargetBranch(target);
+      setMergeCommitMsg(`feat(${sessionDetail.issueIdentifier}): merge '${source}' into ${target}`);
+      setPushFeatureBranchFirst(true);
+      setPushBaseBranch(true);
+      setMergeError(null);
+      setMergeSuccess(null);
+      setShowMergeModal(true);
+    }
+  };
+
   const handleMergeSession = async () => {
     if (!selectedSessionId || mergingSession) return;
     setMergingSession(true);
@@ -296,14 +316,22 @@ export function ExecutionSessionsView({
       const res = await fetch(`/api/sessions/${selectedSessionId}/merge`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          targetBranch: mergeTargetBranch.trim() || undefined,
+          commitMessage: mergeCommitMsg.trim() || undefined,
+          pushFeatureBranchFirst,
+          pushBaseBranch,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
         setMergeError(data.error || 'Failed to merge branch into base branch.');
         return;
       }
-      setMergeSuccess(`Successfully merged branch into ${data.session?.baseBranch || 'main'}!`);
+      setMergeSuccess(
+        `Successfully pushed "${sessionDetail?.ticketBranch || sessionDetail?.branch}" and merged into ${data.session?.baseBranch || mergeTargetBranch || 'main'}!`
+      );
+      setShowMergeModal(false);
       await fetchSessionDetail(selectedSessionId);
       await fetchSessions();
     } catch (err: unknown) {
@@ -1936,7 +1964,7 @@ export function ExecutionSessionsView({
                           {sessionDetail.isDone && sessionDetail.mergeStatus !== 'merged' && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                               <button
-                                onClick={handleMergeSession}
+                                onClick={openMergeModal}
                                 disabled={mergingSession}
                                 style={{
                                   padding: '0.55rem 1.15rem',
@@ -1954,7 +1982,7 @@ export function ExecutionSessionsView({
                                 }}
                               >
                                 <GitMerge size={16} />
-                                <span>{mergingSession ? 'Merging...' : `1. Merge into ${sessionDetail.baseBranch || 'main'}`}</span>
+                                <span>{mergingSession ? 'Pushing & Merging...' : `1. Push & Merge into ${sessionDetail.baseBranch || 'main'}`}</span>
                               </button>
 
                               <button
@@ -3055,6 +3083,294 @@ export function ExecutionSessionsView({
           </div>
         </div>
       )}
+      {/* Push & Merge Ticket Branch Modal */}
+      {showMergeModal && sessionDetail && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '1rem',
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '580px',
+              backgroundColor: 'var(--bg-secondary)',
+              border: '1px solid var(--border-default)',
+              borderRadius: 'var(--radius-lg)',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: '1.25rem 1.5rem',
+                borderBottom: '1px solid var(--border-subtle)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: 'var(--bg-tertiary)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <div
+                  style={{
+                    width: '34px',
+                    height: '34px',
+                    borderRadius: 'var(--radius-sm)',
+                    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                    border: '1px solid rgba(34, 197, 94, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--success)',
+                  }}
+                >
+                  <GitMerge size={18} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '1rem', color: '#fff' }}>
+                    Push & Merge Ticket Branch
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    Pushes current branch to remote first, then merges into the base branch
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowMergeModal(false)}
+                disabled={mergingSession}
+                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0.25rem' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div
+              style={{
+                padding: '1.25rem 1.5rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1rem',
+                overflowY: 'auto',
+                maxHeight: '75vh',
+              }}
+            >
+              {/* Branch Flow Diagram */}
+              <div
+                style={{
+                  padding: '0.85rem 1rem',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.8rem',
+                }}
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                  <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Current Ticket Branch</span>
+                  <span style={{ color: 'var(--accent-primary)', fontWeight: 600 }}>
+                    {sessionDetail.ticketBranch || sessionDetail.branch}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)' }}>
+                  <span style={{ fontSize: '0.7rem' }}>push & merge</span>
+                  <ArrowRight size={14} />
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'flex-end' }}>
+                  <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Target Base Branch</span>
+                  <span style={{ color: 'var(--success)', fontWeight: 600 }}>
+                    {mergeTargetBranch || sessionDetail.baseBranch || 'main'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Execution Steps Notice */}
+              <div
+                style={{
+                  backgroundColor: 'var(--bg-primary)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '0.75rem 1rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                  fontSize: '0.78rem',
+                }}
+              >
+                <div style={{ fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Layers size={14} style={{ color: 'var(--accent-primary)' }} />
+                  <span>Automated Multi-Step Git Execution:</span>
+                </div>
+                <div style={{ color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.3rem', paddingLeft: '0.5rem' }}>
+                  <div>1. <strong>Commit changes</strong> on <code className="mono-chip">{sessionDetail.ticketBranch || sessionDetail.branch}</code></div>
+                  <div>2. <strong>Push to remote origin</strong> (<code className="mono-chip">origin/{sessionDetail.ticketBranch || sessionDetail.branch}</code>)</div>
+                  <div>3. <strong>Checkout & merge</strong> into <code className="mono-chip">{mergeTargetBranch || 'main'}</code></div>
+                  <div>4. <strong>Push updated base branch</strong> to remote origin</div>
+                </div>
+              </div>
+
+              {/* Push Current Branch Checkbox */}
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '0.6rem',
+                  cursor: 'pointer',
+                  padding: '0.65rem 0.85rem',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={pushFeatureBranchFirst}
+                  onChange={(e) => setPushFeatureBranchFirst(e.target.checked)}
+                  style={{ marginTop: '0.2rem', accentColor: 'var(--accent-primary)' }}
+                />
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    Push ticket branch to remote before merging (Recommended)
+                  </span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    Pushes current branch commits to origin/{sessionDetail.ticketBranch || sessionDetail.branch} so remote has the full feature history.
+                  </span>
+                </div>
+              </label>
+
+              {/* Push Base Branch Checkbox */}
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '0.6rem',
+                  cursor: 'pointer',
+                  padding: '0.65rem 0.85rem',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={pushBaseBranch}
+                  onChange={(e) => setPushBaseBranch(e.target.checked)}
+                  style={{ marginTop: '0.2rem', accentColor: 'var(--accent-primary)' }}
+                />
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    Push merged base branch to remote after merge
+                  </span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    Publishes the merge commit to origin/{mergeTargetBranch || 'main'}.
+                  </span>
+                </div>
+              </label>
+
+              {/* Commit Message */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem' }}>
+                  Merge Commit Message
+                </label>
+                <input
+                  type="text"
+                  value={mergeCommitMsg}
+                  onChange={(e) => setMergeCommitMsg(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.5rem 0.75rem',
+                    backgroundColor: 'var(--bg-primary)',
+                    border: '1px solid var(--border-default)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.8rem',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                />
+              </div>
+
+              {/* Error Alert */}
+              {mergeError && (
+                <div
+                  style={{
+                    padding: '0.75rem',
+                    borderRadius: 'var(--radius-sm)',
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    color: 'var(--danger-primary)',
+                    fontSize: '0.75rem',
+                  }}
+                >
+                  {mergeError}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div
+              style={{
+                padding: '1rem 1.5rem',
+                borderTop: '1px solid var(--border-subtle)',
+                backgroundColor: 'var(--bg-tertiary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: '0.65rem',
+              }}
+            >
+              <button
+                onClick={() => setShowMergeModal(false)}
+                disabled={mergingSession}
+                className="btn-secondary"
+                style={{ fontSize: '0.8rem', padding: '0.45rem 0.9rem' }}
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={handleMergeSession}
+                disabled={mergingSession}
+                style={{
+                  padding: '0.45rem 1.15rem',
+                  borderRadius: 'var(--radius-sm)',
+                  border: 'none',
+                  backgroundColor: 'var(--success)',
+                  color: '#fff',
+                  fontSize: '0.82rem',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.45rem',
+                  cursor: mergingSession ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 0 14px rgba(34, 197, 94, 0.35)',
+                }}
+              >
+                <GitMerge size={15} />
+                <span>{mergingSession ? 'Pushing & Merging...' : 'Push & Merge Branch'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Phase 2: Pull Request Staged Modal */}
       {showPrModal && sessionDetail && (
         <div

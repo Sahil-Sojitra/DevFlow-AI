@@ -238,6 +238,9 @@ export type MarkDoneInput = z.infer<typeof MarkDoneSchema>;
 export const MergeSessionSchema = z.object({
   targetBranch: z.string().optional(),
   commitMessage: z.string().optional(),
+  pushFeatureBranchFirst: z.boolean().optional(),
+  pushBaseBranch: z.boolean().optional(),
+  remote: z.string().optional(),
 });
 export type MergeSessionInput = z.infer<typeof MergeSessionSchema>;
 
