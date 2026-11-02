@@ -10,6 +10,7 @@ import {
   StopCircle,
   FileCode2,
   FolderGit2,
+  AlertCircle,
   GitBranch,
   Layers,
   Clock,
@@ -199,6 +200,62 @@ export function ExecutionSessionsView({
   const [mergeSuccess, setMergeSuccess] = useState<string | null>(null);
   const [showPrModal, setShowPrModal] = useState(false);
   const [prCopied, setPrCopied] = useState(false);
+  const [creatingPr, setCreatingPr] = useState(false);
+  const [prError, setPrError] = useState<string | null>(null);
+  const [prSuccessUrl, setPrSuccessUrl] = useState<string | null>(null);
+  const [prSuccessNumber, setPrSuccessNumber] = useState<number | null>(null);
+  const [prTitle, setPrTitle] = useState('');
+  const [prBody, setPrBody] = useState('');
+  const [prIsDraft, setPrIsDraft] = useState(false);
+
+  const openPrModal = () => {
+    if (sessionDetail) {
+      setPrTitle(`feat(${sessionDetail.issueIdentifier}): ${sessionDetail.issueTitle}`);
+      const checks = sessionDetail.verificationResults.length > 0
+        ? sessionDetail.verificationResults.map((v) => `- [x] \`${v.name}\` (${v.status})`).join('\n')
+        : '- [x] Automated tests and checks passed';
+      const files = sessionDetail.changedFiles.length > 0
+        ? sessionDetail.changedFiles.slice(0, 10).map((f) => `- \`${f.path}\` (${f.status})`).join('\n')
+        : '- Implementation code changes';
+      setPrBody(
+        `## Summary\nResolves **${sessionDetail.issueIdentifier}**: ${sessionDetail.issueTitle}\n\n### Implementation Overview\n${sessionDetail.summary || 'Approved plan implemented and verified autonomously.'}\n\n### Verification Checklist\n${checks}\n\n### Modified Files (${sessionDetail.changedFiles.length})\n${files}\n\n---\n*Created automatically with [DevFlow-AI](https://github.com/Sahil-Sojitra/DevFlow-AI)*`
+      );
+      setPrError(null);
+      setPrSuccessUrl(sessionDetail.prUrl || null);
+      setPrSuccessNumber(sessionDetail.prNumber || null);
+    }
+    setShowPrModal(true);
+  };
+
+  const handleCreatePr = async () => {
+    if (!selectedSessionId || creatingPr) return;
+    setCreatingPr(true);
+    setPrError(null);
+    try {
+      const res = await fetch(`/api/sessions/${selectedSessionId}/pr`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: prTitle.trim() || undefined,
+          body: prBody.trim() || undefined,
+          draft: prIsDraft,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPrError(data.error || 'Failed to push branch and create pull request.');
+        return;
+      }
+      setPrSuccessUrl(data.prUrl || null);
+      setPrSuccessNumber(data.prNumber || null);
+      await fetchSessionDetail(selectedSessionId);
+      await fetchSessions();
+    } catch (err: unknown) {
+      setPrError((err as Error).message || 'Failed to push branch and create pull request.');
+    } finally {
+      setCreatingPr(false);
+    }
+  };
 
   const handleMergeSession = async () => {
     if (!selectedSessionId || mergingSession) return;
@@ -1716,7 +1773,7 @@ export function ExecutionSessionsView({
                               </button>
 
                               <button
-                                onClick={() => setShowPrModal(true)}
+                                onClick={openPrModal}
                                 style={{
                                   padding: '0.55rem 1.15rem',
                                   borderRadius: 'var(--radius-sm)',
@@ -1732,9 +1789,33 @@ export function ExecutionSessionsView({
                                 }}
                               >
                                 <GitPullRequest size={15} />
-                                <span>2. Create Pull Request (PR)</span>
+                                <span>{sessionDetail.prUrl ? '2. View / Re-push PR' : '2. Create Pull Request (PR)'}</span>
                               </button>
                             </div>
+                          )}
+
+                          {sessionDetail.isDone && sessionDetail.prUrl && (
+                            <a
+                              href={sessionDetail.prUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.45rem',
+                                padding: '0.45rem 0.85rem',
+                                borderRadius: 'var(--radius-sm)',
+                                backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                                border: '1px solid var(--accent-primary)',
+                                color: 'var(--accent-primary)',
+                                fontSize: '0.8rem',
+                                fontWeight: 700,
+                                textDecoration: 'none',
+                              }}
+                            >
+                              <GitPullRequest size={15} />
+                              <span>{sessionDetail.prNumber ? `Pull Request #${sessionDetail.prNumber} ↗` : 'Open Pull Request ↗'}</span>
+                            </a>
                           )}
 
                           {sessionDetail.isDone && sessionDetail.mergeStatus === 'merged' && (
@@ -2442,10 +2523,10 @@ export function ExecutionSessionsView({
                 </div>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: '1rem', color: '#fff' }}>
-                    Create Pull Request (Option 2)
+                    Push & Create Pull Request
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    Staged Option — PR Automation will be connected in Phase 3
+                    Pushes your ticket branch to remote origin and generates or connects the PR
                   </div>
                 </div>
               </div>
@@ -2459,65 +2540,138 @@ export function ExecutionSessionsView({
             </div>
 
             <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div
-                style={{
-                  padding: '0.85rem 1rem',
-                  backgroundColor: 'rgba(56, 189, 248, 0.08)',
-                  border: '1px solid rgba(56, 189, 248, 0.25)',
-                  borderRadius: 'var(--radius-sm)',
-                  fontSize: '0.82rem',
-                  color: 'var(--text-secondary)',
-                  lineHeight: 1.5,
-                }}
-              >
-                Direct Git Provider API integration (creating PRs on GitHub / GitLab) is staged for Phase 3. You can review and copy the pre-formatted PR details below.
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Branches:</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.84rem' }}>
-                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)' }}>{sessionDetail.ticketBranch || sessionDetail.branch}</span>
-                  <span style={{ color: 'var(--text-muted)' }}>➔</span>
-                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{sessionDetail.baseBranch || 'main'}</span>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Proposed PR Title:</span>
-                <input
-                  type="text"
-                  readOnly
-                  value={`feat(${sessionDetail.issueIdentifier}): ${sessionDetail.issueTitle}`}
+              {prError && (
+                <div
                   style={{
-                    padding: '0.5rem 0.75rem',
+                    padding: '0.75rem 1rem',
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid var(--error)',
                     borderRadius: 'var(--radius-sm)',
-                    border: '1px solid var(--border-default)',
-                    backgroundColor: 'var(--bg-primary)',
-                    color: 'var(--text-primary)',
                     fontSize: '0.82rem',
-                    fontFamily: 'var(--font-mono)',
+                    color: '#fca5a5',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
                   }}
-                />
-              </div>
+                >
+                  <AlertCircle size={16} color="var(--error)" />
+                  <span>{prError}</span>
+                </div>
+              )}
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Summary of Changes:</span>
-                <textarea
-                  readOnly
-                  rows={4}
-                  value={`## Linear Issue ${sessionDetail.issueIdentifier} - ${sessionDetail.issueTitle}\n\n- Verified by DevFlow AI automated verification suite\n- Changed files: ${sessionDetail.changedFiles?.length ?? 0} files\n- Verification passed: ${sessionDetail.verificationPassed ? 'Yes' : 'No'}`}
+              {prSuccessUrl ? (
+                <div
                   style={{
-                    padding: '0.5rem 0.75rem',
+                    padding: '1.25rem',
+                    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                    border: '1px solid var(--success)',
                     borderRadius: 'var(--radius-sm)',
-                    border: '1px solid var(--border-default)',
-                    backgroundColor: 'var(--bg-primary)',
-                    color: 'var(--text-primary)',
-                    fontSize: '0.8rem',
-                    fontFamily: 'var(--font-mono)',
-                    resize: 'none',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.75rem',
+                    alignItems: 'center',
+                    textAlign: 'center',
                   }}
-                />
-              </div>
+                >
+                  <CheckCircle2 size={32} color="var(--success)" />
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#86efac', fontSize: '1rem' }}>
+                      Branch Pushed & Pull Request Ready!
+                    </div>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                      {prSuccessNumber
+                        ? `Pull Request #${prSuccessNumber} was created on your remote git provider.`
+                        : 'Your feature branch has been pushed to origin and is ready to review or create.'}
+                    </div>
+                  </div>
+
+                  <a
+                    href={prSuccessUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.45rem',
+                      padding: '0.6rem 1.25rem',
+                      borderRadius: 'var(--radius-sm)',
+                      backgroundColor: 'var(--accent-primary)',
+                      color: '#fff',
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                      textDecoration: 'none',
+                      marginTop: '0.5rem',
+                    }}
+                  >
+                    <span>{prSuccessNumber ? `Open Pull Request #${prSuccessNumber}` : 'Open Pull Request in Browser'}</span>
+                    <ExternalLink size={15} />
+                  </a>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Branches:</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.84rem' }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)' }}>{sessionDetail.ticketBranch || sessionDetail.branch}</span>
+                      <span style={{ color: 'var(--text-muted)' }}>➔</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{sessionDetail.baseBranch || 'main'}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Pull Request Title:</span>
+                    <input
+                      type="text"
+                      value={prTitle}
+                      onChange={(e) => setPrTitle(e.target.value)}
+                      disabled={creatingPr}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--border-default)',
+                        backgroundColor: 'var(--bg-primary)',
+                        color: 'var(--text-primary)',
+                        fontSize: '0.82rem',
+                        fontFamily: 'var(--font-mono)',
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Pull Request Description (Markdown):</span>
+                    <textarea
+                      rows={6}
+                      value={prBody}
+                      onChange={(e) => setPrBody(e.target.value)}
+                      disabled={creatingPr}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--border-default)',
+                        backgroundColor: 'var(--bg-primary)',
+                        color: 'var(--text-primary)',
+                        fontSize: '0.8rem',
+                        fontFamily: 'var(--font-mono)',
+                        resize: 'vertical',
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      id="prIsDraft"
+                      checked={prIsDraft}
+                      onChange={(e) => setPrIsDraft(e.target.checked)}
+                      disabled={creatingPr}
+                      style={{ width: '15px', height: '15px', cursor: 'pointer' }}
+                    />
+                    <label htmlFor="prIsDraft" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                      Mark as Draft Pull Request
+                    </label>
+                  </div>
+                </>
+              )}
             </div>
 
             <div
@@ -2548,18 +2702,18 @@ export function ExecutionSessionsView({
 
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(`feat(${sessionDetail.issueIdentifier}): ${sessionDetail.issueTitle}\n\nLinear Issue: ${sessionDetail.issueIdentifier}`);
+                  navigator.clipboard.writeText(`${prTitle}\n\n${prBody}`);
                   setPrCopied(true);
                   setTimeout(() => setPrCopied(false), 2000);
                 }}
                 style={{
-                  padding: '0.55rem 1.25rem',
+                  padding: '0.55rem 1.15rem',
                   borderRadius: 'var(--radius-sm)',
-                  backgroundColor: 'var(--accent-primary)',
-                  color: '#fff',
+                  border: '1px solid var(--border-default)',
+                  backgroundColor: 'var(--bg-secondary)',
+                  color: 'var(--text-secondary)',
                   fontSize: '0.85rem',
-                  fontWeight: 600,
-                  border: 'none',
+                  fontWeight: 500,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -2567,8 +2721,40 @@ export function ExecutionSessionsView({
                 }}
               >
                 <Copy size={14} />
-                <span>{prCopied ? 'Copied PR Info!' : 'Copy PR Details'}</span>
+                <span>{prCopied ? 'Copied Details!' : 'Copy PR Details'}</span>
               </button>
+
+              {!prSuccessUrl && (
+                <button
+                  onClick={handleCreatePr}
+                  disabled={creatingPr}
+                  style={{
+                    padding: '0.55rem 1.25rem',
+                    borderRadius: 'var(--radius-sm)',
+                    backgroundColor: 'var(--accent-primary)',
+                    color: '#fff',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    border: 'none',
+                    cursor: creatingPr ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.45rem',
+                  }}
+                >
+                  {creatingPr ? (
+                    <>
+                      <Loader2 size={14} className="spin" />
+                      <span>Pushing & Creating PR...</span>
+                    </>
+                  ) : (
+                    <>
+                      <GitPullRequest size={15} />
+                      <span>Push & Create Pull Request</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>

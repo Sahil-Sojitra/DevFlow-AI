@@ -50,6 +50,10 @@ const RawEnvSchema = z.object({
   DEVFLOW_PLANS_DIR: z
     .string()
     .optional(),
+  GITHUB_TOKEN: z
+    .string()
+    .min(1)
+    .optional(),
 });
 
 export interface AppConfig {
@@ -61,6 +65,7 @@ export interface AppConfig {
   linearApiUrl: string;
   enableLinearIntegrationTest: boolean;
   plansDir: string;
+  githubToken?: string;
 }
 
 /**
@@ -118,6 +123,7 @@ export function loadConfig(
     linearApiUrl,
     enableLinearIntegrationTest,
     plansDir,
+    githubToken: parsed.GITHUB_TOKEN && parsed.GITHUB_TOKEN.trim().length > 0 ? parsed.GITHUB_TOKEN.trim() : undefined,
   };
 }
 

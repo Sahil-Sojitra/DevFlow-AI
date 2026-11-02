@@ -90,6 +90,9 @@ export interface ExecutionSessionRecord {
   mergeStatus?: 'not_merged' | 'merged' | 'merge_failed';
   mergedAt?: string;
   mergeCommitSha?: string;
+  prStatus?: 'not_created' | 'created' | 'pr_failed';
+  prUrl?: string;
+  prNumber?: number;
   baselineCommit: string;
   baselineDirtyCount: number;
   baselineFiles: string[];
@@ -129,6 +132,9 @@ export interface ExecutionSessionSummary {
   mergeStatus?: 'not_merged' | 'merged' | 'merge_failed';
   mergedAt?: string;
   mergeCommitSha?: string;
+  prStatus?: 'not_created' | 'created' | 'pr_failed';
+  prUrl?: string;
+  prNumber?: number;
   isIsolated: boolean;
   createdAt: string;
   startedAt?: string;
@@ -191,3 +197,11 @@ export const MergeSessionSchema = z.object({
   commitMessage: z.string().optional(),
 });
 export type MergeSessionInput = z.infer<typeof MergeSessionSchema>;
+
+export const CreatePullRequestSchema = z.object({
+  title: z.string().optional(),
+  body: z.string().optional(),
+  targetBranch: z.string().optional(),
+  draft: z.boolean().optional(),
+});
+export type CreatePullRequestInput = z.infer<typeof CreatePullRequestSchema>;

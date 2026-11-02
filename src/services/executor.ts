@@ -17,12 +17,16 @@ import {
   pullBaseBranch,
   commitWorktreeChanges,
   mergeBranch,
+  pushBranch,
+  parseRemoteUrl,
+  generatePrWebUrl,
   detectChangedFiles,
   getUnifiedDiff,
 } from './git-ops.js';
 import type {
   ExecutionSessionRecord,
   CreateExecutionRequest,
+  CreatePullRequestInput,
   SessionRevision,
   VerificationResult,
   DiagnosticIssue,
@@ -932,5 +936,187 @@ ${feedback}
     );
 
     return updated!;
+  }
+
+  /**
+   * Pushes the ticket branch to remote and creates/generates a Pull Request.
+   */
+  public async createPullRequest(
+    sessionId: string,
+    options: CreatePullRequestInput = {}
+  ): Promise<{ success: boolean; prUrl?: string; prNumber?: number; message: string; session: ExecutionSessionRecord }> {
+    const session = this.executionStorage.getSession(sessionId);
+    if (!session) {
+      throw new Error(`Session "${sessionId}" not found.`);
+    }
+
+    if (session.status !== 'completed') {
+      throw new Error(
+        `Only completed execution sessions can be pushed to create a PR. Current status: "${session.status}".`
+      );
+    }
+
+    const sourceBranch = session.ticketBranch || session.branch;
+    const targetBranch = options.targetBranch || session.baseBranch || detectBaseBranch(session.repositoryPath);
+
+    // Ensure all changes in working path are committed before pushing
+    try {
+      commitWorktreeChanges(
+        session.workingPath,
+        `feat(${session.issueIdentifier}): implement approved plan for ${session.issueTitle}`
+      );
+    } catch {
+      // Ignore
+    }
+
+    this.executionStorage.appendLog(
+      sessionId,
+      'info',
+      `Pushing branch "${sourceBranch}" to remote origin...`
+    );
+
+    // 1. Push branch to remote origin
+    const pushResult = pushBranch(session.repositoryPath, sourceBranch, 'origin');
+    if (!pushResult.success) {
+      this.executionStorage.updateSession(sessionId, {
+        prStatus: 'pr_failed',
+      });
+      this.executionStorage.appendLog(
+        sessionId,
+        'error',
+        `Push to origin failed: ${pushResult.error || pushResult.message}`
+      );
+      throw new Error(pushResult.error || pushResult.message);
+    }
+
+    this.executionStorage.appendLog(
+      sessionId,
+      'info',
+      `✓ Successfully pushed branch "${sourceBranch}" to origin.`
+    );
+
+    // 2. Prepare PR Title & Description
+    const title = options.title || `feat(${session.issueIdentifier}): ${session.issueTitle}`;
+    const checksList =
+      session.verificationResults.length > 0
+        ? session.verificationResults.map((v) => `- [x] \`${v.name}\` (${v.status})`).join('\n')
+        : '- [x] Automated tests and validation checks passed';
+
+    const filesList =
+      session.changedFiles.length > 0
+        ? session.changedFiles.slice(0, 15).map((f) => `- \`${f.path}\` (${f.status})`).join('\n') +
+          (session.changedFiles.length > 15 ? `\n- ...and ${session.changedFiles.length - 15} more file(s)` : '')
+        : '- Automated implementation files';
+
+    const body =
+      options.body ||
+      [
+        `## Summary`,
+        `Resolves **${session.issueIdentifier}**: ${session.issueTitle}`,
+        ``,
+        `### Implementation Overview`,
+        session.summary || `Approved implementation plan completed and verified autonomously.`,
+        ``,
+        `### Verification Checklist`,
+        checksList,
+        ``,
+        `### Modified Files (${session.changedFiles.length})`,
+        filesList,
+        ``,
+        `---`,
+        `*Created automatically with [DevFlow-AI](https://github.com/Sahil-Sojitra/DevFlow-AI)*`,
+      ].join('\n');
+
+    // 3. Inspect Remote Info
+    const remoteInfo = parseRemoteUrl(session.repositoryPath, 'origin');
+
+    let prUrl: string | undefined;
+    let prNumber: number | undefined;
+
+    // 4. Attempt GitHub API if token available
+    if (remoteInfo?.provider === 'github' && remoteInfo.owner && remoteInfo.repo && this.config.githubToken) {
+      try {
+        this.executionStorage.appendLog(
+          sessionId,
+          'info',
+          `Calling GitHub API to create Pull Request on ${remoteInfo.owner}/${remoteInfo.repo}...`
+        );
+        const resp = await fetch(
+          `https://api.github.com/repos/${remoteInfo.owner}/${remoteInfo.repo}/pulls`,
+          {
+            method: 'POST',
+            headers: {
+              Accept: 'application/vnd.github+json',
+              Authorization: `Bearer ${this.config.githubToken}`,
+              'Content-Type': 'application/json',
+              'User-Agent': 'DevFlow-AI',
+            },
+            body: JSON.stringify({
+              title,
+              body,
+              head: sourceBranch,
+              base: targetBranch,
+              draft: Boolean(options.draft),
+            }),
+          }
+        );
+
+        if (resp.ok) {
+          const prData = (await resp.json()) as { html_url: string; number: number };
+          prUrl = prData.html_url;
+          prNumber = prData.number;
+          this.executionStorage.appendLog(
+            sessionId,
+            'info',
+            `✓ Created GitHub Pull Request #${prNumber}: ${prUrl}`
+          );
+        } else {
+          const errText = await resp.text();
+          this.executionStorage.appendLog(
+            sessionId,
+            'warn',
+            `GitHub API returned status ${resp.status}: ${errText}. Falling back to 1-click comparison link.`
+          );
+        }
+      } catch (apiErr: unknown) {
+        this.executionStorage.appendLog(
+          sessionId,
+          'warn',
+          `GitHub API call error: ${(apiErr as Error).message}. Falling back to 1-click comparison link.`
+        );
+      }
+    }
+
+    // 5. Fallback to 1-click PR comparison URL
+    if (!prUrl && remoteInfo) {
+      const webUrl = generatePrWebUrl(remoteInfo, sourceBranch, targetBranch, title, body);
+      if (webUrl) {
+        prUrl = webUrl;
+        this.executionStorage.appendLog(
+          sessionId,
+          'info',
+          `Generated 1-click Pull Request creation link for ${remoteInfo.provider}.`
+        );
+      }
+    }
+
+    const updatedSession = this.executionStorage.updateSession(sessionId, {
+      prStatus: 'created',
+      prUrl,
+      prNumber,
+      progressMessage: prNumber
+        ? `Pull Request #${prNumber} created on ${remoteInfo?.provider || 'remote'}!`
+        : `Branch pushed and Pull Request ready for review.`,
+    });
+
+    return {
+      success: true,
+      prUrl,
+      prNumber,
+      message: prNumber
+        ? `Pull Request #${prNumber} created successfully!`
+        : `Branch pushed successfully to remote origin.`,
+      session: updatedSession!,
+    };
   }
 }

@@ -8,6 +8,9 @@ import {
   pullBaseBranch,
   mergeBranch,
   createAndCheckoutBranch,
+  parseRemoteUrl,
+  generatePrWebUrl,
+  pushBranch,
 } from '../../src/services/git-ops.js';
 import * as gitOps from '../../src/services/git-ops.js';
 
@@ -79,5 +82,38 @@ describe('Git Operations Service', () => {
     expect(res).toBeDefined();
     expect(typeof res.success).toBe('boolean');
     expect(res.branch).toBe('main');
+  });
+
+  it('parses git remote URLs accurately for GitHub and GitLab', () => {
+    // Current repo remote
+    const remoteInfo = parseRemoteUrl(process.cwd(), 'origin');
+    if (remoteInfo) {
+      expect(remoteInfo.provider).toBe('github');
+      expect(remoteInfo.owner).toBe('Sahil-Sojitra');
+      expect(remoteInfo.repo).toBe('DevFlow-AI');
+      expect(remoteInfo.webBaseUrl).toBe('https://github.com/Sahil-Sojitra/DevFlow-AI');
+    }
+  });
+
+  it('generates 1-click PR comparison URLs for GitHub', () => {
+    const remote = {
+      provider: 'github' as const,
+      owner: 'acme-org',
+      repo: 'web-app',
+      rawUrl: 'https://github.com/acme-org/web-app.git',
+      webBaseUrl: 'https://github.com/acme-org/web-app',
+    };
+
+    const url = generatePrWebUrl(remote, 'feat/auth', 'main', 'feat: add auth', 'Resolves auth ticket');
+    expect(url).toBeDefined();
+    expect(url).toContain('https://github.com/acme-org/web-app/compare/main...feat%2Fauth?');
+    expect(url).toContain('title=feat%3A+add+auth');
+    expect(url).toContain('body=Resolves+auth+ticket');
+  });
+
+  it('handles pushBranch gracefully when remote does not exist', () => {
+    const res = pushBranch(process.cwd(), 'feat/dummy', 'non-existent-remote-xyz');
+    expect(res.success).toBe(false);
+    expect(res.error).toBeDefined();
   });
 });

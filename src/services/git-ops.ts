@@ -518,3 +518,146 @@ export function getUnifiedDiff(targetDir: string, maxBytes = 200000): string {
 
   return diffOutput.trim() || 'No changes detected.';
 }
+
+export interface RemoteInfo {
+  provider: 'github' | 'gitlab' | 'bitbucket' | 'unknown';
+  owner?: string;
+  repo?: string;
+  rawUrl: string;
+  webBaseUrl?: string;
+}
+
+/**
+ * Parses git remote URL into structured RemoteInfo (provider, owner, repository, web base URL).
+ */
+export function parseRemoteUrl(repoDir: string, remote = 'origin'): RemoteInfo | null {
+  try {
+    const rawUrl = runGit(['remote', 'get-url', remote], repoDir).trim();
+    if (!rawUrl) return null;
+
+    let hostname = '';
+    let pathPart = '';
+
+    if (rawUrl.startsWith('git@') || rawUrl.startsWith('ssh://')) {
+      const match = rawUrl.match(/(?:ssh:\/\/)?git@([^:]+):?(\d+)?\/?(.+)$/);
+      if (match) {
+        hostname = match[1];
+        pathPart = match[3];
+      }
+    } else {
+      try {
+        const parsed = new URL(rawUrl);
+        hostname = parsed.hostname;
+        pathPart = parsed.pathname.replace(/^\//, '');
+      } catch {
+        // Fallback
+      }
+    }
+
+    const cleanPath = pathPart.replace(/\.git$/, '');
+    const parts = cleanPath.split('/').filter(Boolean);
+    const owner = parts.length >= 2 ? parts[parts.length - 2] : undefined;
+    const repo = parts.length >= 1 ? parts[parts.length - 1] : undefined;
+
+    let provider: RemoteInfo['provider'] = 'unknown';
+    let webBaseUrl: string | undefined;
+
+    if (hostname.includes('github.com')) {
+      provider = 'github';
+      if (owner && repo) webBaseUrl = `https://github.com/${owner}/${repo}`;
+    } else if (hostname.includes('gitlab.com')) {
+      provider = 'gitlab';
+      if (owner && repo) webBaseUrl = `https://gitlab.com/${owner}/${repo}`;
+    } else if (hostname.includes('bitbucket.org')) {
+      provider = 'bitbucket';
+      if (owner && repo) webBaseUrl = `https://bitbucket.org/${owner}/${repo}`;
+    }
+
+    return {
+      provider,
+      owner,
+      repo,
+      rawUrl,
+      webBaseUrl,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pushes a local branch to the configured remote repository.
+ */
+export function pushBranch(
+  repoDir: string,
+  branchName: string,
+  remote = 'origin'
+): { success: boolean; message: string; error?: string } {
+  try {
+    const remotes = runGit(['remote'], repoDir);
+    if (!remotes || remotes.trim().length === 0) {
+      return {
+        success: false,
+        message: 'No git remote configured.',
+        error: `Repository "${repoDir}" has no remotes configured. Add a remote with "git remote add origin <url>" first.`,
+      };
+    }
+
+    runGit(['push', '-u', remote, branchName], repoDir, 45000);
+    return {
+      success: true,
+      message: `Branch "${branchName}" successfully pushed to "${remote}".`,
+    };
+  } catch (err: unknown) {
+    const msg = (err as Error).message;
+    return {
+      success: false,
+      message: `Failed to push branch "${branchName}" to "${remote}".`,
+      error: msg,
+    };
+  }
+}
+
+/**
+ * Generates direct 1-click web comparison URL to open and create PR in browser.
+ */
+export function generatePrWebUrl(
+  remoteInfo: RemoteInfo,
+  sourceBranch: string,
+  targetBranch: string,
+  title: string,
+  body: string
+): string | null {
+  if (!remoteInfo.webBaseUrl || !remoteInfo.owner || !remoteInfo.repo) {
+    return null;
+  }
+
+  if (remoteInfo.provider === 'github') {
+    const params = new URLSearchParams({
+      expand: '1',
+      title,
+      body,
+    });
+    return `${remoteInfo.webBaseUrl}/compare/${encodeURIComponent(targetBranch)}...${encodeURIComponent(sourceBranch)}?${params.toString()}`;
+  }
+
+  if (remoteInfo.provider === 'gitlab') {
+    const params = new URLSearchParams({
+      'merge_request[source_branch]': sourceBranch,
+      'merge_request[target_branch]': targetBranch,
+      'merge_request[title]': title,
+      'merge_request[description]': body,
+    });
+    return `${remoteInfo.webBaseUrl}/-/merge_requests/new?${params.toString()}`;
+  }
+
+  if (remoteInfo.provider === 'bitbucket') {
+    const params = new URLSearchParams({
+      source: sourceBranch,
+      dest: targetBranch,
+    });
+    return `${remoteInfo.webBaseUrl}/pull-requests/new?${params.toString()}`;
+  }
+
+  return null;
+}

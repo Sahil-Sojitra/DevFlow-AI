@@ -493,4 +493,99 @@ Step 1: Create auth middleware.
       'Only completed execution sessions can be merged'
     );
   });
+
+  it('successfully pushes branch and generates pull request URL for completed session', async () => {
+    vi.spyOn(gitOps, 'pushBranch').mockReturnValue({
+      success: true,
+      message: 'Branch pushed successfully',
+    });
+
+    vi.spyOn(gitOps, 'parseRemoteUrl').mockReturnValue({
+      provider: 'github',
+      owner: 'acme',
+      repo: 'web-service',
+      rawUrl: 'https://github.com/acme/web-service.git',
+      webBaseUrl: 'https://github.com/acme/web-service',
+    });
+
+    const storage = new ExecutionStorageService(mockConfig, sessionsDir);
+    const executor = new ImplementationExecutor({
+      config: mockConfig,
+      repoRegistry: new RepositoryRegistry(mockConfig),
+      planStorage: new PlanStorageService(mockConfig),
+      executionStorage: storage,
+    });
+
+    storage.saveSession({
+      id: 'sess_pr_test',
+      issueIdentifier: 'SAH-PR',
+      issueTitle: 'Add Auth Support',
+      planFilePath: 'plans/SAH-PR.md',
+      repositoryPath: allowedRepo,
+      workingPath: allowedRepo,
+      isIsolated: false,
+      branch: 'main',
+      ticketBranch: 'feat/sah-pr',
+      baseBranch: 'main',
+      baselineCommit: 'abc123456',
+      baselineDirtyCount: 0,
+      baselineFiles: [],
+      createdAt: new Date().toISOString(),
+      status: 'completed',
+      progressMessage: 'Completed',
+      logs: [],
+      changedFiles: [{ path: 'src/auth.ts', status: 'added', isPreExisting: false }],
+      verificationResults: [{ name: 'test', command: 'npm test', status: 'passed', durationMs: 100, output: 'ok' }],
+      implementationCompleted: true,
+      verificationPassed: true,
+      isDone: true,
+    });
+
+    const prResult = await executor.createPullRequest('sess_pr_test', {
+      title: 'feat: add auth support',
+    });
+
+    expect(prResult.success).toBe(true);
+    expect(prResult.prUrl).toBeDefined();
+    expect(prResult.prUrl).toContain('https://github.com/acme/web-service/compare/main...feat%2Fsah-pr?');
+    expect(prResult.session.prStatus).toBe('created');
+  });
+
+  it('rejects PR creation when session is not completed', async () => {
+    const storage = new ExecutionStorageService(mockConfig, sessionsDir);
+    const executor = new ImplementationExecutor({
+      config: mockConfig,
+      repoRegistry: new RepositoryRegistry(mockConfig),
+      planStorage: new PlanStorageService(mockConfig),
+      executionStorage: storage,
+    });
+
+    storage.saveSession({
+      id: 'sess_pr_queued',
+      issueIdentifier: 'SAH-QUEUED',
+      issueTitle: 'Queued',
+      planFilePath: 'plans/SAH-QUEUED.md',
+      repositoryPath: allowedRepo,
+      workingPath: allowedRepo,
+      isIsolated: false,
+      branch: 'main',
+      ticketBranch: 'feat/sah-queued',
+      baseBranch: 'main',
+      baselineCommit: 'abc123456',
+      baselineDirtyCount: 0,
+      baselineFiles: [],
+      createdAt: new Date().toISOString(),
+      status: 'queued',
+      progressMessage: 'Queued',
+      logs: [],
+      changedFiles: [],
+      verificationResults: [],
+      implementationCompleted: false,
+      verificationPassed: false,
+    });
+
+    await expect(executor.createPullRequest('sess_pr_queued')).rejects.toThrow(
+      'Only completed execution sessions can be pushed to create a PR'
+    );
+  });
 });
