@@ -160,41 +160,6 @@ export interface ExecutionSessionSummary {
   durationSeconds?: number;
 }
 
-/**
- * Antigravity Model & Token Usage Quota Telemetry.
- */
-export interface ModelQuotaStatus {
-  modelName: string;
-  modelDisplayName: string;
-  contextWindow: number;
-  sessionLimitTokens: number;
-  currentSessionTokens: number;
-  sessionPercentUsed: number;
-  weeklyLimitTokens: number;
-  weeklyUsedTokens: number;
-  weeklyPercentUsed: number;
-  weeklyResetDay: string;
-  daysUntilWeeklyReset: number;
-  totalSessionsThisWeek: number;
-  activeSessionsCount: number;
-  ticketUsage?: {
-    issueIdentifier: string;
-    issueTitle: string;
-    inputTokens: number;
-    outputTokens: number;
-    thinkingTokens: number;
-    totalTokens: number;
-    durationSeconds: number;
-  };
-  recentTicketsUsage: {
-    issueIdentifier: string;
-    issueTitle: string;
-    tokens: number;
-    durationSeconds: number;
-    timestamp: string;
-    status: ExecutionSessionStatus;
-  }[];
-}
 
 /**
  * Validation schema for starting an execution session.

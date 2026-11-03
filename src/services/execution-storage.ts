@@ -6,7 +6,6 @@ import {
   type ExecutionSessionRecord,
   type ExecutionSessionSummary,
   type ExecutionSessionStatus,
-  type ModelQuotaStatus,
   VALID_STATUS_TRANSITIONS,
   InvalidStateTransitionError,
 } from '../types/execution.js';
@@ -339,108 +338,5 @@ export class ExecutionStorageService {
     return sessions.sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
-  }
-
-  /**
-   * Computes Antigravity model quotas and weekly/session token usage metrics.
-   */
-  public getModelQuotaStatus(currentSessionId?: string | null): ModelQuotaStatus {
-    const modelName = process.env.DEVFLOW_MODEL || 'gemini-3.8-flash-high';
-    let modelDisplayName = 'Gemini 3.8 Flash (High)';
-    if (modelName.includes('claude-sonnet')) {
-      modelDisplayName = 'Claude 3.7 Sonnet';
-    } else if (modelName.includes('claude-opus')) {
-      modelDisplayName = 'Claude 3 Opus (Thinking)';
-    } else if (modelName.includes('gemini-3.8-flash-low')) {
-      modelDisplayName = 'Gemini 3.8 Flash (Low)';
-    } else if (modelName.includes('gemini-3.8-flash-medium')) {
-      modelDisplayName = 'Gemini 3.8 Flash (Medium)';
-    }
-
-    const contextWindow = 1_000_000;
-    const sessionLimitTokens = parseInt(process.env.DEVFLOW_SESSION_TOKEN_LIMIT || '100000', 10);
-    const weeklyLimitTokens = parseInt(process.env.DEVFLOW_WEEKLY_TOKEN_LIMIT || '1000000', 10);
-
-    const now = new Date();
-    const dayOfWeek = now.getUTCDay(); // 0 is Sunday, 1 is Monday
-    const daysUntilWeeklyReset = ((8 - dayOfWeek) % 7) || 7;
-    const weeklyResetDay = 'Monday 00:00 UTC';
-
-    // Seven days rolling cutoff
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).getTime();
-
-    const allSessions = this.listSessions();
-
-    // Identify current target session
-    let targetSession: ExecutionSessionSummary | ExecutionSessionRecord | null = null;
-    if (currentSessionId) {
-      targetSession = this.getSession(currentSessionId);
-    }
-    if (!targetSession) {
-      targetSession =
-        allSessions.find((s) => ['running', 'verifying', 'planning', 'applying', 'queued'].includes(s.status)) ||
-        allSessions[0] ||
-        null;
-    }
-
-    let weeklyUsedTokens = 0;
-    let totalSessionsThisWeek = 0;
-    let activeSessionsCount = 0;
-
-    for (const s of allSessions) {
-      const sessionTime = new Date(s.createdAt).getTime();
-      if (sessionTime >= sevenDaysAgo) {
-        totalSessionsThisWeek++;
-        if (s.usage?.total_tokens) {
-          weeklyUsedTokens += s.usage.total_tokens;
-        }
-      }
-      if (['running', 'verifying', 'planning', 'applying', 'queued'].includes(s.status)) {
-        activeSessionsCount++;
-      }
-    }
-
-    const currentSessionTokens = targetSession?.usage?.total_tokens || 0;
-    const sessionPercentUsed = Math.min(100, Math.round((currentSessionTokens / sessionLimitTokens) * 100));
-    const weeklyPercentUsed = Math.min(100, Math.round((weeklyUsedTokens / weeklyLimitTokens) * 100));
-
-    const ticketUsage = targetSession
-      ? {
-          issueIdentifier: targetSession.issueIdentifier,
-          issueTitle: targetSession.issueTitle,
-          inputTokens: targetSession.usage?.input_tokens || 0,
-          outputTokens: targetSession.usage?.output_tokens || 0,
-          thinkingTokens: targetSession.usage?.thinking_tokens || 0,
-          totalTokens: targetSession.usage?.total_tokens || 0,
-          durationSeconds: targetSession.durationSeconds || 0,
-        }
-      : undefined;
-
-    const recentTicketsUsage = allSessions.slice(0, 10).map((s) => ({
-      issueIdentifier: s.issueIdentifier,
-      issueTitle: s.issueTitle,
-      tokens: s.usage?.total_tokens || 0,
-      durationSeconds: s.durationSeconds || 0,
-      timestamp: s.createdAt,
-      status: s.status,
-    }));
-
-    return {
-      modelName,
-      modelDisplayName,
-      contextWindow,
-      sessionLimitTokens,
-      currentSessionTokens,
-      sessionPercentUsed,
-      weeklyLimitTokens,
-      weeklyUsedTokens,
-      weeklyPercentUsed,
-      weeklyResetDay,
-      daysUntilWeeklyReset,
-      totalSessionsThisWeek,
-      activeSessionsCount,
-      ticketUsage,
-      recentTicketsUsage,
-    };
   }
 }
